@@ -1,0 +1,58 @@
+version: '3.5'
+
+services:
+
+  ceph-driver:
+    build: .
+    environment:
+      - CEPH_MONITOR_HOST=mon0
+      - DEFAULT_IMAGE_SIZE=1
+      - CAN_AUTO_CREATE_VOLUMES=false
+      - LOG_DEBUG=1
+      - ETCD_URL=http://etcd0:2379
+    volumes:
+      - /run/docker/plugins:/run/docker/plugins
+      - /mnt:/mnt
+      - /dev:/dev
+      - /sys:/sys
+
+  etcd0:
+    image: quay.io/coreos/etcd
+    environment:
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd0:2379
+
+  mon0:
+    image: flaviostutz/ceph-monitor
+    ports:
+      - 6789:6789
+    environment:
+      - CREATE_CLUSTER=true
+      - ETCD_URL=http://etcd0:2379
+
+  mgr1:
+    image: flaviostutz/ceph-manager
+    ports:
+      - 18443:8443 #dashboard https
+      - 18003:8003 #restful https
+      - 19283:9283 #prometheus
+    environment:
+      - LOG_LEVEL=0
+      - PEER_MONITOR_HOST=mon0
+      - ETCD_URL=http://etcd0:2379
+
+  osd1:
+    image: flaviostutz/ceph-osd
+    environment:
+      - PEER_MONITOR_HOST=mon0
+      - OSD_EXT4_SUPPORT=true
+      - OSD_JOURNAL_SIZE=512
+      - ETCD_URL=http://etcd0:2379
+
+  osd2:
+    image: flaviostutz/ceph-osd
+    environment:
+      - PEER_MONITOR_HOST=mon0
+      - OSD_EXT4_SUPPORT=true
+      - OSD_JOURNAL_SIZE=512
+      - ETCD_URL=http://etcd0:2379
