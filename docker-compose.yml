@@ -10,6 +10,7 @@ services:
       - CAN_AUTO_CREATE_VOLUMES=false
       - LOG_DEBUG=1
       - ETCD_URL=http://etcd0:2379
+    privileged: true
     volumes:
       - /run/docker/plugins:/run/docker/plugins
       - /mnt:/mnt

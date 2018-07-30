@@ -2,7 +2,7 @@ FROM golang:1.10 AS BUILD
 RUN go get github.com/yp-engineering/rbd-docker-plugin
 RUN go get github.com/Soulou/curl-unix-socket
 
-FROM flaviostutz/ceph-base
+FROM flaviostutz/ceph-client
 COPY --from=BUILD /go/bin/* /bin/
 
 RUN apt-get update
@@ -10,6 +10,7 @@ RUN apt-get install -y librados-dev librbd-dev
 
 ENV CEPH_MONITOR_HOST ''
 ENV CEPH_KEYRING_BASE64 ''
+ENV ETCD_URL ''
 
 ENV CEPH_AUTH 'cephx'
 ENV CEPH_USER 'admin'
