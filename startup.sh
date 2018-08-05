@@ -33,7 +33,7 @@ rbd-docker-plugin \
     --cluster $CEPH_CLUSTER_NAME \
     --pool $DEFAULT_POOL_NAME \
     --mount $MOUNT_PATH \
-    --create $CAN_AUTO_CREATE_VOLUMES \
+    --create $ENABLE_AUTO_CREATE_VOLUMES \
     --fs $DEFAULT_IMAGE_FS \
     --size $DEFAULT_IMAGE_SIZE \
     --config /etc/ceph/ceph.conf

@@ -1,5 +1,5 @@
 [global]
-mon host = ${CEPH_MONITOR_HOST}
+mon host = ${MONITOR_HOSTS}
 auth cluster required = ${CEPH_AUTH}
 auth service required = ${CEPH_AUTH}
 auth client required = ${CEPH_AUTH}

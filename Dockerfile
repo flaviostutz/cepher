@@ -8,7 +8,7 @@ COPY --from=BUILD /go/bin/* /bin/
 RUN apt-get update
 RUN apt-get install -y librados-dev librbd-dev
 
-ENV CEPH_MONITOR_HOST ''
+ENV MONITOR_HOSTS ''
 ENV CEPH_KEYRING_BASE64 ''
 ENV ETCD_URL ''
 
@@ -16,7 +16,7 @@ ENV CEPH_AUTH 'cephx'
 ENV CEPH_USER 'admin'
 ENV CEPH_CLUSTER_NAME 'ceph'
 ENV PLUGIN_NAME 'rbd'
-ENV CAN_AUTO_CREATE_VOLUMES 'false'
+ENV ENABLE_AUTO_CREATE_VOLUMES 'false'
 ENV DEFAULT_IMAGE_SIZE 5
 ENV DEFAULT_IMAGE_FS 'xfs'
 ENV DEFAULT_POOL_NAME 'docker-volumes'

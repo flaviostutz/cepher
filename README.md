@@ -3,6 +3,7 @@ Ceph RBD volume driver running in a container. Based on https://github.com/yp-en
 
 ## Usage
 
+* Set HOST_IP on .env to your machine IP
 * Run a sample Ceph Storage Cluster along with ceph-driver
 
 docker-compose.yml
@@ -10,33 +11,56 @@ docker-compose.yml
 ```
   ceph-driver:
     image: flaviostutz/ceph-docker-volume-driver
+    network_mode: host
     environment:
-      - CEPH_MONITOR_HOST=mon0
-      - DEFAULT_POOL_NAME=mypool
-      - DEFAULT_POOL_CREATE=true
+      - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:16789
       - DEFAULT_IMAGE_SIZE=1
-      - CAN_AUTO_CREATE_VOLUMES=false
+      - ENABLE_AUTO_CREATE_VOLUMES=false
       - LOG_DEBUG=1
-      - ETCD_URL=http://etcd0:2379
+      - ETCD_URL=http://${HOST_IP}:12379
+    privileged: true
     volumes:
       - /run/docker/plugins:/run/docker/plugins
       - /mnt:/mnt
       - /dev:/dev
       - /sys:/sys
+      - /lib:/lib
 
   etcd0:
     image: quay.io/coreos/etcd
+    network_mode: host
     environment:
-      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
-      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd0:2379
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:12379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://${HOST_IP}:12379
 
-  mon0:
+  mon1:
     image: flaviostutz/ceph-monitor
-    ports:
-      - 6789:6789
+    network_mode: host
     environment:
+      - LOG_LEVEL=0
       - CREATE_CLUSTER=true
-      - ETCD_URL=http://etcd0:2379
+      - ETCD_URL=http://${HOST_IP}:12379
+      - PEER_MONITOR_HOSTS=${HOST_IP}:26789,${HOST_IP}:36789
+      - MONITOR_ADVERTISE_ADDRESS=${HOST_IP}:16789
+      - MONITOR_BIND_PORT=16789
+
+  mon2:
+    image: flaviostutz/ceph-monitor
+    network_mode: host
+    environment:
+      - ETCD_URL=http://${HOST_IP}:12379
+      - PEER_MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:36789
+      - MONITOR_ADVERTISE_ADDRESS=${HOST_IP}:26789
+      - MONITOR_BIND_PORT=26789
+
+  mon3:
+    image: flaviostutz/ceph-monitor
+    network_mode: host
+    environment:
+      - ETCD_URL=http://${HOST_IP}:12379
+      - PEER_MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789
+      - MONITOR_ADVERTISE_ADDRESS=${HOST_IP}:36789
+      - MONITOR_BIND_PORT=36789
 
   mgr1:
     image: flaviostutz/ceph-manager
@@ -45,36 +69,58 @@ docker-compose.yml
       - 18003:8003 #restful https
       - 19283:9283 #prometheus
     environment:
-      - LOG_LEVEL=0
-      - PEER_MONITOR_HOST=mon0
-      - ETCD_URL=http://etcd0:2379
+      - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:16789
+      - ETCD_URL=http://${HOST_IP}:12379
 
   osd1:
     image: flaviostutz/ceph-osd
+    network_mode: host
+    pid: host
     environment:
-      - PEER_MONITOR_HOST=mon0
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:36789
       - OSD_EXT4_SUPPORT=true
       - OSD_JOURNAL_SIZE=512
-      - ETCD_URL=http://etcd0:2379
+      - OSD_CRUSH_LOCATION=root=default host=host1
+      - ETCD_URL=http://${HOST_IP}:12379
+      # - OSD_PUBLIC_IP=${HOST_IP}
+      # - OSD_CLUSTER_IP=${HOST_IP}
 
   osd2:
     image: flaviostutz/ceph-osd
+    network_mode: host
+    pid: host
     environment:
-      - PEER_MONITOR_HOST=mon0
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:36789
       - OSD_EXT4_SUPPORT=true
       - OSD_JOURNAL_SIZE=512
-      - ETCD_URL=http://etcd0:2379
+      - OSD_CRUSH_LOCATION=root=default host=host2
+      - ETCD_URL=http://${HOST_IP}:12379
+
+  osd3:
+    image: flaviostutz/ceph-osd
+    network_mode: host
+    pid: host
+    environment:
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:36789
+      - OSD_EXT4_SUPPORT=true
+      - OSD_JOURNAL_SIZE=512
+      - OSD_CRUSH_LOCATION=root=default host=host3
+      - ETCD_URL=http://${HOST_IP}:12379
 
 ```
 
-* Prepare Ceph Pools in which you will store volume images
+* There is a default "docker-volumes" pool that this image prepares for you, but if you with to create a customized pool, follow these steps
 
 ```
   # connect to a container that can be used as a Ceph Client
   docker-compose exec mgr1 bash
 
   # create a pool for volume images (each volume in Docker will be an image in RDB)
-  osd pool mypool pg num = 128
+  ceph osd pool create mypool 30
+  rbd pool init mypool
 
   # set max bytes for this pool (optional)
   ceph osd pool set-quota mypool data max_bytes 1000000000
