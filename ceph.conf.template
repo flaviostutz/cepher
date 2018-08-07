@@ -3,3 +3,7 @@ mon host = ${MONITOR_HOSTS}
 auth cluster required = ${CEPH_AUTH}
 auth service required = ${CEPH_AUTH}
 auth client required = ${CEPH_AUTH}
+
+#https://tracker.ceph.com/issues/15000
+#enables layering, striping and exclusive-lock (other features are disabled)
+#rbd default features = 7
