@@ -76,6 +76,7 @@ type cephRBDVolumeDriver struct {
 	pool    string             // ceph pool to use (default: rbd)
 	root    string             // scratch dir for mounts for this plugin
 	config  string             // ceph config file to read
+	//TODO REMOVE volumes INSTANCE DATA. ALWAYS QUERY OS
 	volumes map[string]*Volume // track locally mounted volumes, key on mountpoint
 	m       *sync.Mutex        // mutex to guard operations that change volume maps or use conn
 }
@@ -193,9 +194,14 @@ func (d cephRBDVolumeDriver) Capabilities() *volume.CapabilitiesResponse {
 //    Respond with a string error if an error occurred.
 //
 func (d cephRBDVolumeDriver) Create(r *volume.CreateRequest) error {
-	log.Printf("INFO: API Create(%q)", r)
+	log.Printf("INFO: >>>>>>>> DOCKER API CREATE(%q)", r)
 	d.m.Lock()
 	defer d.m.Unlock()
+	return d.CreateInternal(r)
+}
+
+func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
+	log.Printf("INFO: CreateInternal(%q)", r)
 
 	fstype := *defaultImageFSType
 
@@ -224,7 +230,7 @@ func (d cephRBDVolumeDriver) Create(r *volume.CreateRequest) error {
 	//TODO VERIFY IF UNCOMMENT THIS
 	// do we already know about this volume? return early
 	// if _, found := d.volumes[mount]; found {
-	// 	log.Println("INFO: Volume is already in known mounts: " + mount)
+	// 	log.Printf("INFO: Volume is already in known mounts: " + mount)
 	// 	return nil
 	// }
 
@@ -240,19 +246,26 @@ func (d cephRBDVolumeDriver) Create(r *volume.CreateRequest) error {
 			err = d.createRBDImage(pool, name, size, fstype)
 			if err != nil {
 				errString := fmt.Sprintf("Unable to create RBD Image %s/%s: %s", pool, name, err)
-				log.Println("ERROR: " + errString)
+				log.Printf("ERROR: " + errString)
 				return errors.New(errString)
 			} else {
-				log.Println("INFO: New RBD Image %s/%s created successfully", pool, name)
+				log.Printf("INFO: New RBD Image %s/%s created successfully", pool, name)
 			}
 		} else {
 			errString := fmt.Sprintf("RBD Image %s/%s not found and the plugin is not enabled for automatic image creation", pool, name)
-			log.Println("ERROR: " + errString)
+			log.Printf("ERROR: " + errString)
 			return errors.New(errString)
 		}
 	} else {
-		log.Println("INFO: Image %s/%s already exists in RBD cluster. Reusing it.", pool, name)
+		log.Printf("INFO: Image %s/%s already exists in RBD cluster. Reusing it.", pool, name)
 	}
+
+	// _, err1 := d.MountInternal(&volume.MountRequest{Name: fmt.Sprintf("%s/%s", pool, name)})
+	// if err1 != nil {
+	// 	errString := fmt.Sprintf("Error mounting image %s/%s: %s", pool, name, err1)
+	// 	log.Printf("ERROR: " + errString)
+	// 	return errors.New(errString)
+	// }
 
 	return nil
 }
@@ -268,9 +281,14 @@ func (d cephRBDVolumeDriver) Create(r *volume.CreateRequest) error {
 //    Respond with a string error if an error occurred.
 //
 func (d cephRBDVolumeDriver) Remove(r *volume.RemoveRequest) error {
-	log.Printf("INFO: API Remove(%s)", r)
+	log.Printf("INFO: >>>>>>>> DOCKER API REMOVE(%q)", r)
 	d.m.Lock()
 	defer d.m.Unlock()
+	return d.RemoveInternal(r)
+}
+
+func (d cephRBDVolumeDriver) RemoveInternal(r *volume.RemoveRequest) error {
+	log.Printf("INFO: API RemoveInternal(%s)", r)
 
 	// parse full image name for optional/default pieces
 	pool, name, _, err := d.parseImagePoolNameSize(r.Name)
@@ -294,44 +312,44 @@ func (d cephRBDVolumeDriver) Remove(r *volume.RemoveRequest) error {
 		return err
 	} else if !exists {
 		errString := fmt.Sprintf("RBD Image %s/%s not found", pool, name)
-		log.Println("ERROR: " + errString)
+		log.Printf("ERROR: " + errString)
 		return errors.New(errString)
 	} else {
-		log.Println("DEBUG: RBD Image %d/%s exists. Proceeding to removal using action '%s'", pool, name, removeActionFlag)
+		log.Printf("DEBUG: RBD Image %s/%s exists. Proceeding to removal using action '%s'", pool, name, removeActionFlag)
 	}
 
 	// // attempt to gain lock before remove - lock seems to disappear after rm (but not after rename)
 	// locker, err := d.lockImage(pool, name)
 	// if err != nil {
 	// 	errString := fmt.Sprintf("Unable to lock image for remove: %s", name)
-	// 	log.Println("ERROR: " + errString)
+	// 	log.Printf("ERROR: " + errString)
 	// 	return errors.New(errString)
 	// }
 
 	// remove action can be: ignore, delete or rename
 	if removeActionFlag == "delete" {
-		log.Println("DEBUG: Deleting RBD Image %s/%s from Ceph Cluster", pool, name)
+		log.Printf("DEBUG: Deleting RBD Image %s/%s from Ceph Cluster", pool, name)
 		err = d.removeRBDImage(pool, name)
 		if err != nil {
 			errString := fmt.Sprintf("Unable to remove RBD Image %s/%s: %s", pool, name, err)
-			log.Println("ERROR: " + errString)
+			log.Printf("ERROR: " + errString)
 			// defer d.unlockImage(pool, name, locker)
 			return errors.New(errString)
 		}
 
 		// defer d.unlockImage(pool, name, locker)
 	} else if removeActionFlag == "rename" {
-		log.Println("DEBUG: Renaming RBD Image %s/%s in Ceph Cluster to zz_ prefix", pool, name)
+		log.Printf("DEBUG: Renaming RBD Image %s/%s in Ceph Cluster to zz_ prefix", pool, name)
 		// TODO: maybe add a timestamp?
 		err = d.renameRBDImage(pool, name, "zz_"+name)
 		if err != nil {
 			errString := fmt.Sprintf("Unable to rename RBD Image %s/%s with zz_ prefix: %s", pool, name, err)
-			log.Println("ERROR: " + errString)
+			log.Printf("ERROR: " + errString)
 			// unlock by old name
 			// defer d.unlockImage(pool, name, locker)
 			return errors.New(errString)
 		} else {
-			log.Println("INFO: RBD Image %s/%s renamed successfully to %s/zz_%s", pool, name, pool, name)
+			log.Printf("INFO: RBD Image %s/%s renamed successfully to %s/zz_%s", pool, name, pool, name)
 		}
 		// unlock by new name
 		// defer d.unlockImage(pool, "zz_"+name, locker)
@@ -339,7 +357,7 @@ func (d cephRBDVolumeDriver) Remove(r *volume.RemoveRequest) error {
 		// ignore the remove call - but unlock ?
 		// defer d.unlockImage(pool, name, locker)
 	} else {
-		log.Println("INFO: Volume removal requested, but RBD Image %s/%s won't be really deleted.", pool, name)
+		log.Printf("INFO: Volume removal requested, but RBD Image %s/%s won't be really deleted.", pool, name)
 	}
 
 	log.Printf("DEBUG: delete local volume reference")
@@ -364,9 +382,14 @@ func (d cephRBDVolumeDriver) Remove(r *volume.RemoveRequest) error {
 //
 // TODO: utilize the new MountRequest.ID field to track volumes
 func (d cephRBDVolumeDriver) Mount(r *volume.MountRequest) (*volume.MountResponse, error) {
-	log.Printf("INFO: API Mount(%s)", r)
+	log.Printf("INFO: >>>>>>>> DOCKER API MOUNT(%q)", r)
 	d.m.Lock()
 	defer d.m.Unlock()
+	return d.MountInternal(r)
+}
+
+func (d cephRBDVolumeDriver) MountInternal(r *volume.MountRequest) (*volume.MountResponse, error) {
+	log.Printf("INFO: API MountInternal(%s)", r)
 
 	// parse full image name for optional/default pieces
 	pool, name, _, err := d.parseImagePoolNameSize(r.Name)
@@ -472,7 +495,12 @@ func (d cephRBDVolumeDriver) Mount(r *volume.MountRequest) (*volume.MountRespons
 //    made available).
 //
 func (d cephRBDVolumeDriver) List() (*volume.ListResponse, error) {
-	log.Printf("INFO: API List")
+	log.Printf("INFO: >>>>>>>> DOCKER API LIST")
+	return d.ListInternal();
+}
+
+func (d cephRBDVolumeDriver) ListInternal() (*volume.ListResponse, error) {
+	log.Printf("INFO: API ListInternal")
 
 	log.Printf("DEBUG: Retrieving all images from default RBD Pool %s", d.pool)
 	defaultImages, err := d.rbdList()
@@ -488,14 +516,14 @@ func (d cephRBDVolumeDriver) List() (*volume.ListResponse, error) {
 
 	log.Printf("DEBUG: Retrieving currently mounted volumes")
 	for k,v := range d.volumes {
-		var vname = v.Pool + "/" + v.Name
+		var vname = fmt.Sprintf("%s/%s", v.Pool, v.Name)
 		vnames[vname] = 1
 		apiVol := &volume.Volume{Name: vname, Mountpoint: k}
 		vols = append(vols, apiVol)
 	}
 
 	for _,v := range defaultImages {
-		var vname = d.pool + "/" + v
+		var vname = fmt.Sprintf("%s/%s", d.pool, v)
 		_, ok := vnames[vname]
 		if(!ok) {
 			apiVol := &volume.Volume{Name: vname}
@@ -519,7 +547,12 @@ func (d cephRBDVolumeDriver) List() (*volume.ListResponse, error) {
 //    { "Volume": { "Name": "volume_name", "Mountpoint": "/path/to/directory/on/host" }}
 //
 func (d cephRBDVolumeDriver) Get(r *volume.GetRequest) (*volume.GetResponse, error) {
-	log.Printf("INFO: API Get(%s)", r)
+	log.Printf("INFO: >>>>>>>> DOCKER API GET(%s", r)
+	return d.GetInternal(r)
+}
+
+func (d cephRBDVolumeDriver) GetInternal(r *volume.GetRequest) (*volume.GetResponse, error) {
+	log.Printf("INFO: API GetInternal(%s)", r)
 
 	// parse full image name for optional/default pieces
 	pool, name, _, err := d.parseImagePoolNameSize(r.Name)
@@ -529,24 +562,26 @@ func (d cephRBDVolumeDriver) Get(r *volume.GetRequest) (*volume.GetResponse, err
 	}
 
 	var found *volume.Volume
-	allVolumes, err1 := d.List()
+	allVolumes, err1 := d.ListInternal()
 	if err1 != nil {
 		log.Printf("ERROR: error getting volume list: %s", err1)
 		return nil, errors.New(fmt.Sprintf("Couldn't get volume info for %s/%s: %s", pool, name, err1))
 	}
 	for _,v := range allVolumes.Volumes {
-		if(v.Name == r.Name) {
+		_, rname, _, _ := d.parseImagePoolNameSize(r.Name)
+		var prname = fmt.Sprintf("%s/%s", pool, rname)
+		if(v.Name == prname) {
 			found = v
 			break
 		}
 	}
 
 	if found != nil {
-		log.Printf("INFO: Volume info for %s/%s: %s", pool, name, found)
+		log.Printf("INFO: Volume found for image %s/%s: %s", pool, name, found)
 		return &volume.GetResponse{Volume: &volume.Volume{Name: found.Name, Mountpoint: found.Mountpoint}}, nil
 
 	} else {
-		err := fmt.Sprintf("Volume info not found for %s/%s", pool, name)
+		err := fmt.Sprintf("Volume not found for %s/%s", pool, name)
 		log.Printf("INFO: %s", err)
 		return nil, errors.New(err)
 	}
@@ -598,7 +633,12 @@ func (d cephRBDVolumeDriver) Get(r *volume.GetRequest) (*volume.GetResponse, err
 // FIXME: does volume API require error if Volume requested does not exist/is not mounted? Similar to List/Get leaving mountpoint empty?
 //
 func (d cephRBDVolumeDriver) Path(r *volume.PathRequest) (*volume.PathResponse, error) {
-	log.Printf("INFO: API Path(%s)", r)
+	log.Printf("INFO: >>>>>>>> DOCKER API PATH(%s", r)
+	return d.PathInternal(r)
+}
+
+func (d cephRBDVolumeDriver) PathInternal(r *volume.PathRequest) (*volume.PathResponse, error) {
+	log.Printf("INFO: API PathInternal(%s)", r)
 	// parse full image name for optional/default pieces
 	pool, name, _, err := d.parseImagePoolNameSize(r.Name)
 	if err != nil {
@@ -632,9 +672,14 @@ func (d cephRBDVolumeDriver) Path(r *volume.PathRequest) (*volume.PathResponse, 
 //    Respond with error or nil
 //
 func (d cephRBDVolumeDriver) Unmount(r *volume.UnmountRequest) error {
-	log.Printf("INFO: API Unmount(%s)", r)
+	log.Printf("INFO: >>>>>>>> DOCKER API UNMOUNT(%s", r)
 	d.m.Lock()
 	defer d.m.Unlock()
+	return d.UnmountInternal(r)
+}
+
+func (d cephRBDVolumeDriver) UnmountInternal(r *volume.UnmountRequest) error {
+	log.Printf("INFO: API UnmountInternal(%s)", r)
 
 	// parse full image name for optional/default pieces
 	pool, name, _, err := d.parseImagePoolNameSize(r.Name)
@@ -758,9 +803,9 @@ func (d *cephRBDVolumeDriver) parseImagePoolNameSize(fullname string) (pool stri
 	//   5: size only
 	//
 	matches := imageNameRegexp.FindStringSubmatch(fullname)
-	if isDebugEnabled() {
-		log.Printf("DEBUG: parseImagePoolNameSize: \"%s\": %q", fullname, matches)
-	}
+	// if isDebugEnabled() {
+	// 	log.Printf("DEBUG: parseImagePoolNameSize: \"%s\": %q", fullname, matches)
+	// }
 	if len(matches) != 6 {
 		return "", "", 0, errors.New("Unable to parse image name: " + fullname)
 	}
@@ -953,7 +998,7 @@ func (d *cephRBDVolumeDriver) createRBDImage(pool string, name string, size int,
 
 // removeRBDImage will remove a RBD Image - no undo available
 func (d *cephRBDVolumeDriver) removeRBDImage(pool, name string) error {
-	log.Println("INFO: Deleting RBD Image %s/%s on Ceph Cluster", pool, name)
+	log.Printf("INFO: Deleting RBD Image %s/%s on Ceph Cluster", pool, name)
 
 	// remove the block device image
 	_, err := d.rbdsh(pool, "rm", name)
@@ -966,7 +1011,7 @@ func (d *cephRBDVolumeDriver) removeRBDImage(pool, name string) error {
 
 // renameRBDImage will move a RBD Image to new name
 func (d *cephRBDVolumeDriver) renameRBDImage(pool, name, newname string) error {
-	log.Println("INFO: Rename RBD Image %s/%s to %s/%s", pool, name, pool, newname)
+	log.Printf("INFO: Rename RBD Image %s/%s to %s/%s", pool, name, pool, newname)
 
 	_, err := d.rbdsh(pool, "rename", name, newname)
 	if err != nil {
@@ -977,7 +1022,7 @@ func (d *cephRBDVolumeDriver) renameRBDImage(pool, name, newname string) error {
 
 // mapImage will map the RBD Image to a kernel device
 func (d *cephRBDVolumeDriver) mapImage(pool, imagename string) (string, error) {
-	log.Println("DEBUG: Mapping RBD image %s/%s to kernel device", pool, imagename)
+	log.Printf("DEBUG: Mapping RBD image %s/%s to kernel device", pool, imagename)
 	return d.rbdsh(pool, "map", imagename)
 }
 
@@ -1005,7 +1050,7 @@ func (d *cephRBDVolumeDriver) listMappedDevices() ([]*Volume, error) {
 			header = true
 		} else {
 			var fields = spaceDelimitedFieldsRegexp.FindAllStringSubmatch(v, -1)
-			log.Println("DEBUG: %s", fields)
+			log.Printf("DEBUG: %s", fields)
 			if fields != nil && len(fields)==5 {
 				var vol = &Volume {
 									Pool:   fields[1][0],
@@ -1066,7 +1111,7 @@ func (d *cephRBDVolumeDriver) deviceType(device string) (string, error) {
 
 // verifyDeviceFilesystem will attempt to check XFS filesystems for errors
 func (d *cephRBDVolumeDriver) verifyDeviceFilesystem(device, mount, fstype string) error {
-	log.Println("DEBUG: Checking filesystem %s on device %s", fstype, device)
+	log.Printf("DEBUG: Checking filesystem %s on device %s", fstype, device)
 	// for now we only handle XFS
 	// TODO: use fsck for ext4?
 	if fstype != "xfs" {
@@ -1079,7 +1124,7 @@ func (d *cephRBDVolumeDriver) verifyDeviceFilesystem(device, mount, fstype strin
 		switch err.(type) {
 		case ShTimeoutError:
 			// propagate timeout errors - can't recover? system error? don't try to mount at that point
-			log.Println("DEBUG: Timeout checking filesystem")
+			log.Printf("DEBUG: Timeout checking filesystem")
 			return err
 		default:
 			// assume any other error is xfs error and attempt limited repair
