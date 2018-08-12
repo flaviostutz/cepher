@@ -14,7 +14,8 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/docker/go-plugins-helpers/volume"
+	// "github.com/docker/go-plugins-helpers/volume"
+    "go-plugins-helpers/volume"
 )
 
 var (
@@ -88,7 +89,7 @@ func main() {
 	defer shutdownLogging(logFile)
 
 	log.Printf("---- RUNNING STUTZ VERSION ----")
-	log.Printf("INFO: starting rbd-docker-plugin version %s", VERSION)
+	log.Printf("INFO: starting `rbd-docker`-plugin version %s", VERSION)
 	log.Printf("INFO: canCreateVolumes=%v, removeAction=%q", *canCreateVolumes, removeActionFlag)
 	log.Printf(
 		"INFO: Setting up Ceph Driver for PluginID=%s, cluster=%s, ceph-user=%s, pool=%s, mount=%s, config=%s",

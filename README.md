@@ -142,7 +142,7 @@ docker run -it --rm --volume-driver=rbd --name first --volume mypool/myimage:/mn
 
 # run a second docker container, but use the same volume/image from the previous
 # step so that we can see the persisted data
-docker run -it --rm --volume-driver=rbd --name second --volume docker-volumes/myimage:/mnt/foo ubuntu /bin/bash -c "cat /mnt/foo/hello"
+docker run -it --rm --volume-driver=rbd --name second --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "cat /mnt/foo/hello"
 
 # on Ceph client machine, list the created image
 docker-compose exec mgr1 bash

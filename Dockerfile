@@ -1,15 +1,16 @@
 FROM golang:1.10 AS BUILD
 
-#doing dependency build separated from source build optimizes time for developer, but is not required
-#install external dependencies first
-# ADD rbd-docker-plugin/Gopkg.toml $GOPATH/src/rbd-docker-plugin/
-ADD /main.go $GOPATH/src/rbd-docker-plugin/main.go
-RUN go get -v rbd-docker-plugin
 RUN go get -v github.com/Soulou/curl-unix-socket
 
+#doing dependency build separated from source build optimizes time for developer, but is not required
+#install external dependencies first
+# ADD go-plugins-helpers/Gopkg.toml $GOPATH/src/go-plugins-helpers/
+ADD /main.go $GOPATH/src/cepher/main.go
+RUN go get -v cepher
+
 #now build source code
-ADD src $GOPATH/src/rbd-docker-plugin
-RUN go get -v rbd-docker-plugin
+ADD src $GOPATH/src
+RUN go get -v cepher
 
 
 FROM flaviostutz/ceph-client
@@ -35,6 +36,7 @@ ENV DEFAULT_POOL_QUOTA_MAX_BYTES ''
 ENV LOG_DEBUG 0
 
 COPY --from=BUILD /go/bin/* /bin/
+RUN ls -al /bin/
 ADD startup.sh /
 ADD ceph.conf.template /
 

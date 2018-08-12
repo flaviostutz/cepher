@@ -26,8 +26,8 @@ else
 fi
 rbd pool init ${DEFAULT_POOL_NAME}
 
-echo "Starting rbd-docker-plugin..."
-rbd-docker-plugin \
+echo "Starting Cepher..."
+cepher \
     --name $PLUGIN_NAME \
     --user $CEPH_USER \
     --cluster $CEPH_CLUSTER_NAME \

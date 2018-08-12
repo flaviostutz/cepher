@@ -39,7 +39,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/go-plugins-helpers/volume"
+	// "github.com/docker/go-plugins-helpers/volume"
+    "go-plugins-helpers/volume"
 )
 
 var (
@@ -578,7 +579,7 @@ func (d cephRBDVolumeDriver) GetInternal(r *volume.GetRequest) (*volume.GetRespo
 
 	if found != nil {
 		log.Printf("INFO: Volume found for image %s/%s: %s", pool, name, found)
-		return &volume.GetResponse{Volume: &volume.Volume{Name: found.Name, Mountpoint: found.Mountpoint}}, nil
+		return &volume.GetResponse{Volume: &volume.Volume{Name: found.Name, Mountpoint: found.Mountpoint, CreatedAt: "2018-01-01T00:00:00"}}, nil
 
 	} else {
 		err := fmt.Sprintf("Volume not found for %s/%s", pool, name)
