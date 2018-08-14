@@ -25,7 +25,7 @@ ENV ETCD_URL ''
 ENV CEPH_AUTH 'cephx'
 ENV CEPH_USER 'admin'
 ENV CEPH_CLUSTER_NAME 'ceph'
-ENV PLUGIN_NAME 'rbd'
+ENV PLUGIN_NAME 'cepher'
 ENV ENABLE_AUTO_CREATE_VOLUMES 'false'
 ENV DEFAULT_IMAGE_SIZE 5
 ENV DEFAULT_IMAGE_FS 'xfs'
@@ -36,7 +36,6 @@ ENV DEFAULT_POOL_QUOTA_MAX_BYTES ''
 ENV LOG_DEBUG 0
 
 COPY --from=BUILD /go/bin/* /bin/
-RUN ls -al /bin/
 ADD startup.sh /
 ADD ceph.conf.template /
 

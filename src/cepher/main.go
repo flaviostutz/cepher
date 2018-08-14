@@ -24,16 +24,15 @@ var (
 	// Plugin Option Flags
 	versionFlag        = flag.Bool("version", false, "Print version")
 	debugFlag          = flag.Bool("debug", false, "Debug output")
-	pluginName         = flag.String("name", "rbd", "Docker plugin name for use on --volume-driver option")
+	pluginName         = flag.String("name", "cepher", "Docker plugin name for use on --volume-driver option")
 	cephUser           = flag.String("user", "admin", "Ceph user")
 	cephConfigFile     = flag.String("config", "/etc/ceph/ceph.conf", "Ceph cluster config") // more likely to have config file pointing to cluster
 	cephCluster        = flag.String("cluster", "", "Ceph cluster")                          // less likely to run multiple clusters on same hardware
-	defaultCephPool    = flag.String("pool", "rbd", "Default Ceph Pool for RBD operations")
+	defaultCephPool    = flag.String("pool", "volumes", "Default Ceph Pool for RBD operations")
 	pluginDir          = flag.String("plugins", "/run/docker/plugins", "Docker plugin directory for socket")
 	rootMountDir       = flag.String("mount", volume.DefaultDockerRootDirectory, "Mount directory for volumes on host")
-	logDir             = flag.String("logdir", "/var/log", "Logfile directory")
 	canCreateVolumes   = flag.Bool("create", false, "Can auto Create RBD Images")
-	defaultImageSizeMB = flag.Int("size", 20*1024, "RBD Image size to Create (in MB) (default: 20480=20GB)")
+	defaultImageSizeMB = flag.Int("size", 3*1024, "RBD Image size to Create (in MB) (default: 3072=3GB)")
 	defaultImageFSType = flag.String("fs", "xfs", "FS type for the created RBD Image (must have mkfs.type)")
 )
 
@@ -72,24 +71,14 @@ func socketPath() string {
 	return filepath.Join(*pluginDir, *pluginName+".sock")
 }
 
-func logfilePath() string {
-	return filepath.Join(*logDir, *pluginName+"-docker-plugin.log")
-}
-
 func main() {
 	if *versionFlag {
 		fmt.Printf("%s\n", VERSION)
 		return
 	}
 
-	logFile, err := setupLogging()
-	if err != nil {
-		log.Fatalf("FATAL: Unable to setup logging: %s", err)
-	}
-	defer shutdownLogging(logFile)
-
-	log.Printf("---- RUNNING STUTZ VERSION ----")
-	log.Printf("INFO: starting `rbd-docker`-plugin version %s", VERSION)
+	log.Printf("----CEPHER----")
+	log.Printf("INFO: starting Cepher plugin version %s", VERSION)
 	log.Printf("INFO: canCreateVolumes=%v, removeAction=%q", *canCreateVolumes, removeActionFlag)
 	log.Printf(
 		"INFO: Setting up Ceph Driver for PluginID=%s, cluster=%s, ceph-user=%s, pool=%s, mount=%s, config=%s",
@@ -105,7 +94,7 @@ func main() {
 	if *cephConfigFile == "" {
 		log.Fatal("FATAL: Unable to use ceph rbd tool without config file")
 	}
-	if _, err = os.Stat(*cephConfigFile); os.IsNotExist(err) {
+	if _, err := os.Stat(*cephConfigFile); os.IsNotExist(err) {
 		log.Fatalf("FATAL: Unable to find ceph config needed for ceph rbd tool: %s", err)
 	}
 
@@ -120,7 +109,7 @@ func main() {
 	)
 
 	log.Println("INFO: Initializing driver instance")
-	err = d.init()
+	err := d.init()
 	if err != nil {
 		log.Fatalf("FATAL: error during driver initialization: %s", err)
 	}
@@ -146,7 +135,6 @@ func main() {
 			switch sig {
 			case syscall.SIGTERM, syscall.SIGKILL:
 				log.Printf("INFO: received TERM or KILL signal: %s", sig)
-				shutdownLogging(logFile)
 				os.Exit(0)
 			}
 		}
@@ -163,47 +151,4 @@ func main() {
 // isDebugEnabled checks for RBD_DOCKER_PLUGIN_DEBUG environment variable
 func isDebugEnabled() bool {
 	return *debugFlag || os.Getenv("RBD_DOCKER_PLUGIN_DEBUG") == "1"
-}
-
-// setupLogging attempts to log to a file, otherwise stderr
-func setupLogging() (*os.File, error) {
-	// use date, time and filename for log output
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
-	// setup logfile - path is set from logfileDir and pluginName
-	logfileName := logfilePath()
-	if !isDebugEnabled() && logfileName != "" {
-		logFile, err := os.OpenFile(logfileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			// check if we can write to directory - otherwise just log to stderr?
-			if os.IsPermission(err) {
-				log.Printf("WARN: logging fallback to STDERR: %v", err)
-			} else {
-				// some other, more extreme system error
-				return nil, err
-			}
-		} else {
-			log.Printf("INFO: setting log file: %s", logfileName)
-			log.SetOutput(logFile)
-			return logFile, nil
-		}
-	}
-	return nil, nil
-}
-
-func shutdownLogging(logFile *os.File) {
-	// flush and close the file
-	if logFile != nil {
-		log.Println("INFO: closing log file")
-		logFile.Sync()
-		logFile.Close()
-	}
-}
-
-func reloadLogging(logFile *os.File) (*os.File, error) {
-	log.Println("INFO: reloading log")
-	if logFile != nil {
-		shutdownLogging(logFile)
-	}
-	return setupLogging()
 }

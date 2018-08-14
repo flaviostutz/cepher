@@ -54,22 +54,13 @@ type Volume struct {
 	Pool   string
 	Name   string // RBD Image name
 	Device string // local host kernel device (e.g. /dev/rbd1)
-}
-
-type Mount struct {
-	Device    string // local host kernel device (e.g. /dev/rbd1)
-	MountPath string
+	Mountpath string
 }
 
 // our driver type for impl func
 type cephRBDVolumeDriver struct {
 	// - using default ceph cluster name ("ceph")
 	// - using default ceph config (/etc/ceph/<cluster>.conf)
-	//
-	// TODO: when starting, what if there are mounts already for RBD devices?
-	// do we ingest them as our own or ... currently fails if locked
-	//
-	// TODO: use a chan as semaphore instead of mutex in driver?
 
 	name    string             // unique name for plugin
 	cluster string             // ceph cluster to use (default: ceph)
@@ -77,8 +68,6 @@ type cephRBDVolumeDriver struct {
 	pool    string             // ceph pool to use (default: rbd)
 	root    string             // scratch dir for mounts for this plugin
 	config  string             // ceph config file to read
-	//TODO REMOVE volumes INSTANCE DATA. ALWAYS QUERY OS
-	volumes map[string]*Volume // track locally mounted volumes, key on mountpoint
 	m       *sync.Mutex        // mutex to guard operations that change volume maps or use conn
 }
 
@@ -96,7 +85,7 @@ func newCephRBDVolumeDriver(pluginName, cluster, userName, defaultPoolName, root
 		pool:    defaultPoolName,
 		root:    mountDir,
 		config:  config,
-		volumes: map[string]*Volume{},
+		// volumes: map[string]*Volume{},
 		m:       &sync.Mutex{},
 	}
 
@@ -104,51 +93,7 @@ func newCephRBDVolumeDriver(pluginName, cluster, userName, defaultPoolName, root
 }
 
 func (d cephRBDVolumeDriver) init() error {
-	log.Printf("INFO: Searching for previously mounted paths over rbd kernel mapped devices")
-
-	mapped, err := d.listMappedDevices()
-	if err != nil {
-		return err
-	}
-	log.Printf("INFO: system mapped rbd kernel devices: %s", mapped)
-
-	mounts, err := d.listMounts()
-	if err != nil {
-		return err
-	}
-	// log.Printf("INFO: system mounts: %s", mounts)
-
-	//transform array to map
-	var deviceToMountPathMap map[string]string
-	deviceToMountPathMap = make(map[string]string)
-
-	for _,m := range mounts {
-		deviceToMountPathMap[m.Device] = m.MountPath
-	}
-
-	for _,v := range mapped {
-		mountpath, found := deviceToMountPathMap[v.Device]
-		if found {
-			//add detected mount point as initial mount state
-			log.Printf("DEBUG: RBD Image %s/%s found mounted at %s with device %s", v.Pool, v.Name, mountpath, v.Device)
-			d.volumes[mountpath] = &Volume{
-				Pool:   v.Pool,
-				Name:   v.Name,
-				Device: v.Device,
-			}
-		} else {
-			log.Printf("DEBUG: RBD Image %s/%s found mapped to device %s, but it is not mounted yet.", v.Pool, v.Name, v.Device)
-			log.Printf("DEBUG: unmapping device")
-			err = d.unmapImageDevice(v.Device)
-			if err != nil {
-				log.Printf("ERROR: error on unmap of %s: %s", v.Device, err)
-				return errors.New(fmt.Sprintf("error on unmapping of unmounted kernel rbd device %s. RBD Image %s/%s: %s", v.Device, v.Pool, v.Name, err))
-			} else {
-				log.Printf("DEBUG: unmap successful")
-			}
-		}
-	}
-
+	log.Printf("INFO: Driver initialized")
 	return nil
 }
 
@@ -209,8 +154,9 @@ func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 	// parse image name optional/default pieces
 	pool, name, size, err := d.parseImagePoolNameSize(r.Name)
 	if err != nil {
-		log.Printf("ERROR: error parsing volume name: %s", err)
-		return err
+		err := fmt.Sprintf("error parsing volume name: %s", err)
+		log.Printf("ERROR: %s", err)
+		return errors.New(err)
 	}
 
 	// Options to override from `docker volume create -o OPT=VAL ...`
@@ -220,26 +166,22 @@ func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 	if r.Options["size"] != "" {
 		size, err = strconv.Atoi(r.Options["size"])
 		if err != nil {
-			log.Printf("ERROR: unable to parse int from %s: %s", r.Options["size"], err)
-			return err
+			err := fmt.Sprintf("unable to parse int from %s: %s", r.Options["size"], err)
+			log.Printf("ERROR: %s", err)
+			return errors.New(err)
 		}
 	}
 	if r.Options["fstype"] != "" {
 		fstype = r.Options["fstype"]
 	}
 
-	//TODO VERIFY IF UNCOMMENT THIS
-	// do we already know about this volume? return early
-	// if _, found := d.volumes[mount]; found {
-	// 	log.Printf("INFO: Volume is already in known mounts: " + mount)
-	// 	return nil
-	// }
-
 	log.Printf("DEBUG: verify if image already exists on RBD cluster")
 	exists, err := d.rbdImageExists(pool, name)
 	if err != nil {
-		log.Printf("ERROR: error while checking RBD Image %d/%s: %s", pool, name, err)
-		return err
+		err := fmt.Sprintf("error while checking RBD Image %d/%s: %s", pool, name, err)
+		log.Printf("ERROR: %s", err)
+		return errors.New(err)
+
 	} else if !exists {
 		log.Printf("DEBUG: image don't exist yet")
 		if *canCreateVolumes {
@@ -294,23 +236,18 @@ func (d cephRBDVolumeDriver) RemoveInternal(r *volume.RemoveRequest) error {
 	// parse full image name for optional/default pieces
 	pool, name, _, err := d.parseImagePoolNameSize(r.Name)
 	if err != nil {
-		log.Printf("ERROR: error parsing volume name: %s", err)
-		return err
+		err := fmt.Sprintf("error parsing volume name: %s", err)
+		log.Printf("ERROR: %s", err)
+		return errors.New(err)
 	}
-
-	mount := d.mountpoint(pool, name)
-
-	//TODO VERIFY IF UNCOMMENT THIS
-	// // do we know about this volume. just delete volumes known by this plugin instance
-	// if _, found := d.volumes[mount]; !found {
-	// 	log.Printf("WARN: Volume is not in known mounts: %s", mount)
-	// }
 
 	log.Printf("DEBUG: verify if RBD Image exists in cluster")
 	exists, err := d.rbdImageExists(pool, name)
 	if err != nil {
-		log.Printf("ERROR: error checking for RBD Image %s/%s: %s", pool, name, err)
-		return err
+		err := fmt.Sprintf("error checking for RBD Image %s/%s: %s", pool, name, err)
+		log.Printf("ERROR: %s", err)
+		return errors.New(err)
+
 	} else if !exists {
 		errString := fmt.Sprintf("RBD Image %s/%s not found", pool, name)
 		log.Printf("ERROR: " + errString)
@@ -361,8 +298,8 @@ func (d cephRBDVolumeDriver) RemoveInternal(r *volume.RemoveRequest) error {
 		log.Printf("INFO: Volume removal requested, but RBD Image %s/%s won't be really deleted.", pool, name)
 	}
 
-	log.Printf("DEBUG: delete local volume reference")
-	delete(d.volumes, mount)
+	// log.Printf("DEBUG: delete local volume reference")
+	// delete(d.volumes, mount)
 	return nil
 }
 
@@ -395,90 +332,97 @@ func (d cephRBDVolumeDriver) MountInternal(r *volume.MountRequest) (*volume.Moun
 	// parse full image name for optional/default pieces
 	pool, name, _, err := d.parseImagePoolNameSize(r.Name)
 	if err != nil {
-		log.Printf("ERROR: error parsing volume name: %s", err)
-		return nil, err
-	}
-
-	mountpath := d.mountpoint(pool, name)
-
-	_, found := d.volumes[mountpath]
-	if found {
-		err := fmt.Sprintf("RBD storage plugin doesn't support shared mounts on its volumes")
+		err := fmt.Sprintf("error parsing volume name: %s", err)
 		log.Printf("ERROR: %s", err)
 		return nil, errors.New(err)
 	}
 
-	//TODO VERIFY IF NEEDED
-	// // attempt to lock
-	// locker, err := d.lockImage(pool, name)
-	// if err != nil {
-	// 	log.Printf("ERROR: locking RBD Image(%s): %s", name, err)
-	// 	return nil, errors.New("Unable to get Exclusive Lock")
-	// }
+	mountpath := d.mountpoint(pool, name)
 
-	// map and mount the RBD image -- these are OS level commands, not avail in go-ceph
+	volumes, err := d.currentVolumes()
+	if err!=nil {
+		log.Printf("ERROR: Error retrieving currently mounted volumes: %s", err)
+		return nil, err
 
-	// map
-	log.Printf("DEBUG: mapping kernel device to RBD Image")
-	device, err := d.mapImage(pool, name)
-	if err != nil {
-		log.Printf("ERROR: error mapping RBD Image %s/%s to kernel device: %s", pool, name, err)
-		// failsafe: need to release lock
-		// defer d.unlockImage(pool, name, locker)
-		return nil, errors.New(fmt.Sprintf("Unable to map kernel device. err=%s", err))
-	}
-
-	// determine device FS type
-	fstype, err := d.deviceType(device)
-	if err != nil {
-		log.Printf("WARNING: unable to detect RBD Image %s/%s fstype: %s", name, err)
-		// NOTE: don't fail - FOR NOW we will assume default plugin fstype
-		fstype = *defaultImageFSType
-	}
-
-	// double check image filesystem if possible
-	err = d.verifyDeviceFilesystem(device, mountpath, fstype)
-	if err != nil {
-		log.Printf("ERROR: filesystem at RBD Image %s/%s may need repairs: %s", pool, name, err)
-		// failsafe: need to release lock and unmap kernel device
-		log.Printf("DEBUG: unmapping device")
-		defer d.unmapImageDevice(device)
-		// defer d.unlockImage(pool, name, locker)
-		return nil, errors.New(fmt.Sprintf("Image filesystem has errors. Mount it in a separate machine and perform manual repairs. err=%s", err))
-	}
-
-	// check for mountdir - create if necessary
-	err = os.MkdirAll(mountpath, os.ModeDir|os.FileMode(int(0775)))
-	if err != nil {
-		log.Printf("ERROR: error creating mount directory %s: %s", mountpath, err)
-		// failsafe: need to release lock and unmap kernel device
-		log.Printf("DEBUG: unmapping device")
-		defer d.unmapImageDevice(device)
-		// defer d.unlockImage(pool, name, locker)
-		return nil, errors.New(fmt.Sprintf("Unable to create mountdir %s", mountpath))
-	}
-
-	// mount
-	log.Printf("INFO: Mounting RBD Image %s/%s, mapped to device %s, to mountdir %s", pool, name, device, mountpath)
-	err = d.mountDevice(fstype, device, mountpath)
-	if err != nil {
-		log.Printf("ERROR: error mounting device %s to directory %s: %s", device, mountpath, err)
-		log.Printf("DEBUG: unmapping device")
-		defer d.unmapImageDevice(device)
-		// defer d.unlockImage(pool, name, locker)
-		return nil, errors.New(fmt.Sprintf("Unable to mount device", err))
 	} else {
-		log.Printf("INFO: Mount to %s successful", mountpath)
-	}
+		_, found := volumes[mountpath]
+		//volume already mounted
+		if found {
+			// err := fmt.Sprintf("")
+			// log.Printf("ERROR: %s", err)
+			// return nil, errors.New(err)
+			log.Printf("INFO: Mountpoint %s already exists. Reusing it. pool=%s image=%s", mountpath, pool, name)
 
-	log.Printf("DEBUG: adding mounted info to instance map")
-	d.volumes[mountpath] = &Volume{
-		Pool:   pool,
-		Name:   name,
-		Device: device,
-	}
+		//volume not mounted yet. mount!
+		} else {
+			log.Printf("INFO: Mountpoint %s doesn't exist yet. Creating it. pool=%s image=%s", mountpath, pool, name)
 
-	return &volume.MountResponse{Mountpoint: mountpath}, nil
+			// map
+			log.Printf("DEBUG: mapping kernel device to RBD Image")
+			device, err := d.mapImage(pool, name)
+			if err != nil {
+				log.Printf("ERROR: error mapping RBD Image %s/%s to kernel device: %s", pool, name, err)
+				// failsafe: need to release lock
+				// defer d.unlockImage(pool, name, locker)
+				return nil, errors.New(fmt.Sprintf("Unable to map kernel device. err=%s", err))
+			}
+
+			// determine device FS type
+			fstype, err := d.deviceType(device)
+			if err != nil {
+				log.Printf("WARNING: unable to detect RBD Image %s/%s fstype: %s", name, err)
+				// NOTE: don't fail - FOR NOW we will assume default plugin fstype
+				fstype = *defaultImageFSType
+			}
+
+			// double check image filesystem if possible
+			err = d.verifyDeviceFilesystem(device, mountpath, fstype)
+			if err != nil {
+				log.Printf("ERROR: filesystem at RBD Image %s/%s may need repairs: %s", pool, name, err)
+				// failsafe: need to release lock and unmap kernel device
+				log.Printf("DEBUG: unmapping device")
+				defer d.unmapImageDevice(device)
+				// defer d.unlockImage(pool, name, locker)
+				return nil, errors.New(fmt.Sprintf("Image filesystem has errors. Mount it in a separate machine and perform manual repairs. err=%s", err))
+			}
+
+			// check for mountdir - create if necessary
+			err = os.MkdirAll(mountpath, os.ModeDir|os.FileMode(int(0775)))
+			if err != nil {
+				log.Printf("ERROR: error creating mount directory %s: %s", mountpath, err)
+				// failsafe: need to release lock and unmap kernel device
+				log.Printf("DEBUG: unmapping device")
+				defer d.unmapImageDevice(device)
+				// defer d.unlockImage(pool, name, locker)
+				return nil, errors.New(fmt.Sprintf("Unable to create mountdir %s", mountpath))
+			}
+
+			// mount
+			log.Printf("DEBUG: Mounting RBD Image %s/%s, mapped to device %s, to mountdir %s", pool, name, device, mountpath)
+			err = d.mountDevice(fstype, device, mountpath)
+			if err != nil {
+				log.Printf("ERROR: error mounting device %s to directory %s: %s", device, mountpath, err)
+				log.Printf("DEBUG: unmapping device")
+				defer d.unmapImageDevice(device)
+				// defer d.unlockImage(pool, name, locker)
+				return nil, errors.New(fmt.Sprintf("Unable to mount device", err))
+			} else {
+				log.Printf("INFO: Mount to %s successful", mountpath)
+			}
+
+		}
+
+		// // attempt to lock
+		// locker, err := d.lockImage(pool, name)
+		// if err != nil {
+		// 	log.Printf("ERROR: locking RBD Image(%s): %s", name, err)
+		// 	return nil, errors.New("Unable to get Exclusive Lock")
+		// }
+
+		// map and mount the RBD image -- these are OS level commands, not avail in go-ceph
+
+		return &volume.MountResponse{Mountpoint: mountpath}, nil
+	}
 }
 
 // Get the list of volumes registered with the plugin.
@@ -516,11 +460,18 @@ func (d cephRBDVolumeDriver) ListInternal() (*volume.ListResponse, error) {
 	vnames = make(map[string]int)
 
 	log.Printf("DEBUG: Retrieving currently mounted volumes")
-	for k,v := range d.volumes {
-		var vname = fmt.Sprintf("%s/%s", v.Pool, v.Name)
-		vnames[vname] = 1
-		apiVol := &volume.Volume{Name: vname, Mountpoint: k}
-		vols = append(vols, apiVol)
+	volumes, err := d.currentVolumes()
+	if err!=nil {
+		log.Printf("ERROR: Error retrieving currently mounted volumes: %s", err)
+		return nil, err
+
+	} else {
+		for k,v := range volumes {
+			var vname = fmt.Sprintf("%s/%s", v.Pool, v.Name)
+			vnames[vname] = 1
+			apiVol := &volume.Volume{Name: vname, Mountpoint: k}
+			vols = append(vols, apiVol)
+		}
 	}
 
 	for _,v := range defaultImages {
@@ -558,8 +509,9 @@ func (d cephRBDVolumeDriver) GetInternal(r *volume.GetRequest) (*volume.GetRespo
 	// parse full image name for optional/default pieces
 	pool, name, _, err := d.parseImagePoolNameSize(r.Name)
 	if err != nil {
-		log.Printf("ERROR: error parsing volume name: %s", err)
-		return nil, err
+		err := fmt.Sprintf("error parsing volume name: %s", err)
+		log.Printf("ERROR: %s", err)
+		return nil, errors.New(err)
 	}
 
 	var found *volume.Volume
@@ -586,35 +538,6 @@ func (d cephRBDVolumeDriver) GetInternal(r *volume.GetRequest) (*volume.GetRespo
 		log.Printf("INFO: %s", err)
 		return nil, errors.New(err)
 	}
-
-	// log.Printf("DEBUG: verifying if RBD Image %s/%s exists in cluster", pool, name)
-	// mountPath := d.mountpoint(pool, name)
-	// exists, err := d.rbdImageExists(pool, name)
-	// if err != nil {
-	// 	log.Printf("ERROR: error checking for RBD Image %s/%s: %s", pool, name, err)
-	// 	return nil, err
-
-	// } else {
-	// 	if exists {
-			
-	// 	} else {
-	// 		log.Printf("ERROR: RBD Image %s/%s does not exist", pool, name)
-	// 		var _, ok := d.volumes[mountPath]
-	// 		if(ok) {
-	// 			log.Printf("DEBUG: An existing mount point was found for image %s/%s", pool, name)
-	// 			// delete(d.volumes, mountPath)
-	// 		}
-	// 		return nil, fmt.Errorf("RBD Image %s/%s does not exist", pool, name)
-	// 	}
-
-	// }
-
-	// // for each mounted vol, keep Mountpoint
-	// _, ok := d.volumes[mountPath]
-	// if !ok {
-	// 	mountPath = ""
-	// }
-	// log.Printf("INFO: Get request(%s) => %s", name, mountPath)
 }
 
 // Path returns the path to host directory mountpoint for volume.
@@ -643,19 +566,28 @@ func (d cephRBDVolumeDriver) PathInternal(r *volume.PathRequest) (*volume.PathRe
 	// parse full image name for optional/default pieces
 	pool, name, _, err := d.parseImagePoolNameSize(r.Name)
 	if err != nil {
-		log.Printf("ERROR: error parsing volume name: %s", err)
-		return nil, err
+		err := fmt.Sprintf("error parsing volume name: %s", err)
+		log.Printf("ERROR: %s", err)
+		return nil, errors.New(err)
 	}
 
 	mountpath := d.mountpoint(pool, name)
-	_, ok := d.volumes[mountpath]
-	if ok {
-		log.Printf("INFO: Mountpath for volume %s/%s is %s", pool, name, mountpath)
-		return &volume.PathResponse{Mountpoint: mountpath}, nil
+
+	volumes, err := d.currentVolumes()
+	if err!=nil {
+		log.Printf("ERROR: Error retrieving currently mounted volumes: %s", err)
+		return nil, err
+
 	} else {
-		err := fmt.Sprintf("Volume %s/%s not mounted", pool, name)
-		log.Printf("ERROR: %s", err)
-		return nil, errors.New(err)
+		_, ok := volumes[mountpath]
+		if ok {
+			log.Printf("INFO: Mountpath for volume %s/%s is %s", pool, name, mountpath)
+			return &volume.PathResponse{Mountpoint: mountpath}, nil
+		} else {
+			err := fmt.Sprintf("Volume %s/%s not mounted at %s", pool, name, mountpath)
+			log.Printf("ERROR: %s", err)
+			return nil, errors.New(err)
+		}
 	}
 }
 
@@ -685,75 +617,80 @@ func (d cephRBDVolumeDriver) UnmountInternal(r *volume.UnmountRequest) error {
 	// parse full image name for optional/default pieces
 	pool, name, _, err := d.parseImagePoolNameSize(r.Name)
 	if err != nil {
-		log.Printf("ERROR: error parsing volume name: %s", err)
-		return err
+		err := fmt.Sprintf("error parsing volume name: %s", err)
+		log.Printf("ERROR: %s", err)
+		return errors.New(err)
 	}
 
 	mountpath := d.mountpoint(pool, name)
 
-	vol, found := d.volumes[mountpath]
-	if !found {
-		err := fmt.Sprintf("Volume %s/%s mount not found", pool, name)
+	volumes, err := d.currentVolumes()
+	if err!=nil {
+		err := fmt.Sprintf("Error retrieving currently mounted volumes: %s", err)
 		log.Printf("ERROR: %s", err)
 		return errors.New(err)
 
 	} else {
-		log.Printf("DEBUG: Volume %s/%s mount found at %s device %s. ", pool, name, mountpath, vol.Device)
-		// if vol.ID != r.ID {
-		// 	log.Printf("WARNING: Mount ID %s does not match Unmount ID %s for %s/%s. As this plugin doesn't support shared volumes between containers, this shouldn't happen.", vol.ID, r.ID, pool, name)
-		// 	return "Shared volume mounts not supported by this volume driver. See driver logs for details."
-		// }
-	}
-
-	// unmount
-	// NOTE: this might succeed even if device is still in use inside container. device will dissappear from host side but still be usable inside container :(
-	log.Printf("INFO: Unmounting %s from device %s", mountpath, vol.Device)
-	err = d.unmountDevice(vol.Device)
-	if err != nil {
-		err := fmt.Sprintf("Error unmounting device %s: %s", vol.Device, err)
-		log.Printf("ERROR: %s", err)
-		return errors.New(err)
-		// failsafe: will still attempt to unmap and unlock
-		// log.Printf("DEBUG: will try to unmap even with the failure of unmount")
-	} else {
-		log.Printf("DEBUG: Volume %s/%s unmounted from %s device %s successfully. ", pool, name, mountpath, vol.Device)
-	}
-
-	// unmap
-	log.Printf("INFO: Unmapping device %s from kernel for RBD Image %s/%s", vol.Device, pool, name)
-	err = d.unmapImageDevice(vol.Device)
-	if err != nil {
-		log.Printf("ERROR: error unmapping image device %s: %s", vol.Device, err)
-		// NOTE: rbd unmap exits 16 if device is still being used - unlike umount.  try to recover differently in that case
-		if rbdUnmapBusyRegexp.MatchString(err.Error()) {
-			// can't always re-mount and not sure if we should here ... will be cleaned up once original container goes away
-			err := fmt.Sprintf("unmap of device %s has failed due to 'busy device'", vol.Device)
+		vol, found := volumes[mountpath]
+		if !found {
+			err := fmt.Sprintf("Volume %s/%s mount not found at %s", pool, name, mountpath)
 			log.Printf("ERROR: %s", err)
 			return errors.New(err)
-			
+
 		} else {
-			err := fmt.Sprintf("unmap of device %s has failed: %s", vol.Device, err)
+			log.Printf("DEBUG: Volume %s/%s mount found at %s device %s. ", pool, name, mountpath, vol.Device)
+		}
+
+		// unmount
+		// NOTE: this might succeed even if device is still in use inside container. device will dissappear from host side but still be usable inside container :(
+		log.Printf("DEBUG: Unmounting %s from device %s", mountpath, vol.Device)
+		err = d.unmountDevice(vol.Device)
+		if err != nil {
+			err := fmt.Sprintf("Error unmounting device %s: %s", vol.Device, err)
 			log.Printf("ERROR: %s", err)
 			return errors.New(err)
+			// failsafe: will still attempt to unmap and unlock
+			// log.Printf("DEBUG: will try to unmap even with the failure of unmount")
+		} else {
+			log.Printf("DEBUG: Volume %s/%s unmounted from %s device %s successfully. ", pool, name, mountpath, vol.Device)
 		}
-		// other error, failsafe: proceed to attempt to unlock
-		// return fmt.Sprintf("Error unmapping kernel device %s. err=%s", vol.Device, err)
- 	} else {
-		log.Printf("DEBUG: Volume %s/%s unmapped from kernel device %s successfully. ", pool, name, vol.Device)
+
+		// unmap
+		log.Printf("INFO: Unmapping device %s from kernel for RBD Image %s/%s", vol.Device, pool, name)
+		err = d.unmapImageDevice(vol.Device)
+		if err != nil {
+			log.Printf("ERROR: error unmapping image device %s: %s", vol.Device, err)
+			// NOTE: rbd unmap exits 16 if device is still being used - unlike umount.  try to recover differently in that case
+			if rbdUnmapBusyRegexp.MatchString(err.Error()) {
+				// can't always re-mount and not sure if we should here ... will be cleaned up once original container goes away
+				err := fmt.Sprintf("unmap of device %s has failed due to 'busy device'", vol.Device)
+				log.Printf("ERROR: %s", err)
+				return errors.New(err)
+				
+			} else {
+				err := fmt.Sprintf("unmap of device %s has failed: %s", vol.Device, err)
+				log.Printf("ERROR: %s", err)
+				return errors.New(err)
+			}
+			// other error, failsafe: proceed to attempt to unlock
+			// return fmt.Sprintf("Error unmapping kernel device %s. err=%s", vol.Device, err)
+		} else {
+			log.Printf("DEBUG: Volume %s/%s unmapped from kernel device %s successfully. ", pool, name, vol.Device)
+		}
+
+		//TODO CHECK LATER
+		// // unlock
+		// err = d.unlockImage(vol.Pool, vol.Name, vol.Locker)
+		// if err != nil {
+		// 	log.Printf("ERROR: unlocking RBD image(%s): %s", vol.Name, err)
+		// 	err_msgs = append(err_msgs, "Error unlocking image")
+		// }
+
+		// log.Printf("DEBUG: removing mount info from instance map")
+		// delete(d.volumes, mountpath)
+
+		return nil
 	}
-
-	//TODO CHECK LATER
-	// // unlock
-	// err = d.unlockImage(vol.Pool, vol.Name, vol.Locker)
-	// if err != nil {
-	// 	log.Printf("ERROR: unlocking RBD image(%s): %s", vol.Name, err)
-	// 	err_msgs = append(err_msgs, "Error unlocking image")
-	// }
-
-	log.Printf("DEBUG: removing mount info from instance map")
-	delete(d.volumes, mountpath)
-
-	return nil
 }
 
 //
@@ -762,8 +699,6 @@ func (d cephRBDVolumeDriver) UnmountInternal(r *volume.UnmountRequest) error {
 // ***************************************************************************
 // ***************************************************************************
 //
-
-
 
 
 
@@ -868,7 +803,9 @@ func (d *cephRBDVolumeDriver) createRBDImage(pool string, name string, size int,
 		"--image-feature", "exclusive-lock",
 		name)
 	if err != nil {
-		return err
+		err := fmt.Sprintf("error creating RBD Image %s/%s: %s", pool, name, err)
+		log.Printf("ERROR: %s", err)
+		return errors.New(err)
 	}
 
 	//TODO REVIEW LATER
@@ -882,17 +819,20 @@ func (d *cephRBDVolumeDriver) createRBDImage(pool string, name string, size int,
 	device, err := d.mapImage(pool, name)
 	if err != nil {
 		// defer d.unlockImage(pool, name, lockname)
-		return err
+		err := fmt.Sprintf("error mapping kernel device: %s", err)
+		log.Printf("ERROR: %s", err)
+		return errors.New(err)
 	} else {
 		log.Printf("DEBUG: Done")
 	}
 
-	log.Printf("DEBUG: Formatting filesystem %s on device %s (timeout 5min)", fstype, device)
+	log.Printf("DEBUG: Formatting filesystem %s on device %s", fstype, device)
 	_, err = shWithTimeout(5*time.Minute, mkfs, device)
 	if err != nil {
 		defer d.unmapImageDevice(device)
-		// defer d.unlockImage(pool, name, lockname)
-		return err
+		err := fmt.Sprintf("error formatting filesystem %s on device %s: %s", fstype, device, err)
+		log.Printf("ERROR: %s", err)
+		return errors.New(err)
 	} else {
 		log.Printf("DEBUG: Done")
 	}
@@ -905,7 +845,9 @@ func (d *cephRBDVolumeDriver) createRBDImage(pool string, name string, size int,
 	err = d.unmapImageDevice(device)
 	if err != nil {
 		// ? if we cant unmap -- are we screwed? should we unlock?
-		return err
+		err := fmt.Sprintf("error unmapping device %s: %s", device, err)
+		log.Printf("ERROR: %s", err)
+		return errors.New(err)
 	} else {
 		log.Printf("DEBUG: Done")
 	}
@@ -1005,7 +947,9 @@ func (d *cephRBDVolumeDriver) removeRBDImage(pool, name string) error {
 	_, err := d.rbdsh(pool, "rm", name)
 
 	if err != nil {
-		return err
+		err := fmt.Sprintf("error deleting RBD Image %s/%s: %s", pool, name, err)
+		log.Printf("ERROR: %s", err)
+		return errors.New(err)
 	}
 	return nil
 }
@@ -1016,7 +960,9 @@ func (d *cephRBDVolumeDriver) renameRBDImage(pool, name, newname string) error {
 
 	_, err := d.rbdsh(pool, "rename", name, newname)
 	if err != nil {
-		return err
+		err := fmt.Sprintf("error renaming RBD Image %s/%s to %s/%s: %s", pool, name, pool, newname, err)
+		log.Printf("ERROR: %s", err)
+		return errors.New(err)
 	}
 	return nil
 }
@@ -1069,22 +1015,22 @@ func (d *cephRBDVolumeDriver) listMappedDevices() ([]*Volume, error) {
 }
 
 // list mapped kernel devices
-func (d *cephRBDVolumeDriver) listMounts() ([]*Mount, error) {
+func (d *cephRBDVolumeDriver) listMounts() ([]*Volume, error) {
 	// NOTE: this does not even require a user nor a pool, just device name
 	result, err := shWithDefaultTimeout("mount")
 	if err != nil {
 		return nil, err
 	}
 
-	var mounts[]*Mount
+	var mounts[]*Volume
 
 	var lines = strings.Split(result, "\n")
 	for _,v := range lines {
 		var fields = spaceDelimitedFieldsRegexp.FindAllStringSubmatch(v, -1)
 		if fields != nil && len(fields)>=3 {
-			var m = &Mount {
+			var m = &Volume {
 								Device:     fields[0][0],
-								MountPath:  fields[2][0],
+								Mountpath:  fields[2][0],
 							}
 			mounts = append(mounts, m)
 		} else {
@@ -1183,4 +1129,58 @@ func (d *cephRBDVolumeDriver) rbdsh(pool, command string, args ...string) (strin
 		args = append([]string{"--pool", pool}, args...)
 	}
 	return shWithDefaultTimeout("rbd", args...)
+}
+
+func (d *cephRBDVolumeDriver) currentVolumes() (map[string]*Volume, error) {
+	mapped, err := d.listMappedDevices()
+	if err != nil {
+		err := fmt.Sprintf("error getting mapped devices: %s", err)
+		log.Printf("ERROR: %s", err)
+		return nil, errors.New(err)
+	}
+	log.Printf("INFO: system mapped rbd kernel devices: %s", mapped)
+
+	mounts, err := d.listMounts()
+	if err != nil {
+		err := fmt.Sprintf("error getting current mounts: %s", err)
+		log.Printf("ERROR: %s", err)
+		return nil, errors.New(err)
+	}
+	log.Printf("INFO: system mounts: %s", mounts)
+
+	//transform array to map
+	var deviceToMountPathMap map[string]string
+	deviceToMountPathMap = make(map[string]string)
+
+	volumes := make(map[string]*Volume)
+
+	for _,m := range mounts {
+		deviceToMountPathMap[m.Device] = m.Mountpath
+	}
+
+	for _,v := range mapped {
+		mountpath, found := deviceToMountPathMap[v.Device]
+		if found {
+			//add detected mount point as initial mount state
+			log.Printf("DEBUG: RBD Image %s/%s found mounted at %s with device %s", v.Pool, v.Name, mountpath, v.Device)
+			volumes[mountpath] = &Volume{
+				Pool:   v.Pool,
+				Name:   v.Name,
+				Device: v.Device,
+				Mountpath: mountpath,
+			}
+		} else {
+			log.Printf("DEBUG: RBD Image %s/%s found mapped to device %s, but it is not mounted yet.", v.Pool, v.Name, v.Device)
+			log.Printf("DEBUG: unmapping device")
+			err = d.unmapImageDevice(v.Device)
+			if err != nil {
+				log.Printf("ERROR: error on unmap of %s: %s", v.Device, err)
+				return nil, errors.New(fmt.Sprintf("error on unmapping of unmounted kernel rbd device %s. RBD Image %s/%s: %s", v.Device, v.Pool, v.Name, err))
+			} else {
+				log.Printf("DEBUG: unmap successful")
+			}
+		}
+	}
+
+	return volumes, nil
 }

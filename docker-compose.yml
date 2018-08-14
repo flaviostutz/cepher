@@ -2,7 +2,7 @@ version: '3.5'
 
 services:
 
-  ceph-driver:
+  cepher:
     build: .
     network_mode: host
     environment:

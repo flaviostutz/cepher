@@ -1,16 +1,17 @@
-# rbd-docker-plugin-container
-Ceph RBD volume driver running in a container. Based on https://github.com/yp-engineering/rbd-docker-plugin
+# cepher
+Docker Volume Plugin that enables the management of volumes on Ceph RBD backends.
+This is a hard fork of https://github.com/yp-engineering/rbd-docker-plugin
 
 ## Usage
 
 * Set HOST_IP on .env to your machine IP
-* Run a sample Ceph Storage Cluster along with ceph-driver
+* Run a sample Ceph Storage Cluster along with cepher
 
 docker-compose.yml
 
 ```
-  ceph-driver:
-    image: flaviostutz/ceph-docker-volume-driver
+  cepher:
+    image: flaviostutz/cepher
     network_mode: host
     environment:
       - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:16789
@@ -112,7 +113,7 @@ docker-compose.yml
 
 ```
 
-* There is a default "docker-volumes" pool that this image prepares for you, but if you with to create a customized pool, follow these steps
+* There is a default "volumes" pool that this image prepares for you, but if you wish to create a customized pool, follow these steps
 
 ```
   # connect to a container that can be used as a Ceph Client
@@ -138,16 +139,13 @@ docker-compose.yml
 # created on Ceph during volume creation
 # after echoing to a file in the newly created volume, this container will exit 
 # and remove its instance's data, but not the image data.
-docker run -it --rm --volume-driver=rbd --name first --volume mypool/myimage:/mnt/foo ubuntu /bin/bash -c "echo -n 'Hello ' >> /mnt/foo/hello"
+docker run -it --rm --volume-driver=cepher --name first --volume mypool/myimage:/mnt/foo ubuntu /bin/bash -c "echo -n 'Hello ' >> /mnt/foo/hello"
 
 # run a second docker container, but use the same volume/image from the previous
 # step so that we can see the persisted data
-docker run -it --rm --volume-driver=rbd --name second --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "cat /mnt/foo/hello"
+docker run -it --rm --volume-driver=cepher --name second --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "cat /mnt/foo/hello"
 
 # on Ceph client machine, list the created image
 docker-compose exec mgr1 bash
 rbd ls default
 ```
-
-## TODO
-* Enhance error messages returned to Docker daemon (Plugin) when image cannot be created
