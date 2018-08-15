@@ -1,0 +1,67 @@
+{
+    "description": "Ceph RBD volume plugin for Docker",
+    "documentation": "https://github.com/flaviostutz/cepher",
+    "entrypoint": [
+        "/docker-volume-cepher"
+    ],
+    "env": [
+        {
+            "name": "LOG_LEVEL",
+            "Description": "One of debug, info, warning or error",
+            "settable": [
+                "value"
+            ],
+            "value": "0"
+        },
+        {
+            "name": "RBD_CONF_KEYRING_USER",
+            "settable": [
+                "value"
+            ]
+        }
+    ],
+    "interface": {
+        "socket": "cepher.sock",
+        "types": [
+            "docker.volumedriver/1.0"
+        ]
+    },
+    "linux": {
+        "AllowAllDevices": true,
+        "capabilities": [
+            "CAP_SYS_ADMIN",
+            "CAP_SYS_MODULE"
+        ],
+        "devices": null
+    },
+    "mounts": [{
+            "source": "/lib/modules",
+            "destination": "/lib/modules",
+            "type": "bind",
+            "options": [
+                "rbind"
+            ]
+        },
+        {
+            "source": "/dev",
+            "destination": "/dev",
+            "type": "bind",
+            "options": [
+                "shared",
+                "rbind"
+            ]
+        },
+        {
+            "source": "/sys",
+            "destination": "/sys",
+            "type": "bind",
+            "options": [
+                "rbind"
+            ]
+        }
+    ],
+    "network": {
+        "type": "host"
+    },
+    "propagatedmount": "/mnt/cepher-driver"
+}

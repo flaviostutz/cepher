@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e
-set -x
+# set -x
 
-export MOUNT_PATH="/mnt/rbd-driver/$PLUGIN_NAME"
+export PLUGIN_NAME="cepher"
+export MOUNT_PATH="/mnt/cepher"
 export RBD_DOCKER_PLUGIN_DEBUG=$LOG_DEBUG
 
 mkdir -p $MOUNT_PATH
@@ -36,5 +37,6 @@ cepher \
     --create $ENABLE_AUTO_CREATE_VOLUMES \
     --fs $DEFAULT_IMAGE_FS \
     --size $DEFAULT_IMAGE_SIZE \
+    --debug $LOG_DEBUG \
     --config /etc/ceph/ceph.conf
 

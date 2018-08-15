@@ -7,14 +7,14 @@ package main
 import (
 	"errors"
 	"flag"
-	"fmt"
-	"log"
 	"os"
+	"fmt"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 
 	"github.com/docker/go-plugins-helpers/volume"
+	"github.com/Sirupsen/logrus"
     // "go-plugins-helpers/volume"
 )
 
@@ -23,14 +23,14 @@ var (
 
 	// Plugin Option Flags
 	versionFlag        = flag.Bool("version", false, "Print version")
-	debugFlag          = flag.Bool("debug", false, "Debug output")
+	logLevel           = flag.String("debug", "INFO", "LogLevels: DEBUG, INFO, WARNING, ERROR")
 	pluginName         = flag.String("name", "cepher", "Docker plugin name for use on --volume-driver option")
 	cephUser           = flag.String("user", "admin", "Ceph user")
 	cephConfigFile     = flag.String("config", "/etc/ceph/ceph.conf", "Ceph cluster config") // more likely to have config file pointing to cluster
 	cephCluster        = flag.String("cluster", "", "Ceph cluster")                          // less likely to run multiple clusters on same hardware
 	defaultCephPool    = flag.String("pool", "volumes", "Default Ceph Pool for RBD operations")
 	pluginDir          = flag.String("plugins", "/run/docker/plugins", "Docker plugin directory for socket")
-	rootMountDir       = flag.String("mount", volume.DefaultDockerRootDirectory, "Mount directory for volumes on host")
+	rootMountDir       = flag.String("mount", "/mnt/cepher", "Mount directory for volumes on host")
 	canCreateVolumes   = flag.Bool("create", false, "Can auto Create RBD Images")
 	defaultImageSizeMB = flag.Int("size", 3*1024, "RBD Image size to Create (in MB) (default: 3072=3GB)")
 	defaultImageFSType = flag.String("fs", "xfs", "FS type for the created RBD Image (must have mkfs.type)")
@@ -72,16 +72,29 @@ func socketPath() string {
 }
 
 func main() {
+	switch *logLevel {
+		case "debug":
+			logrus.SetLevel(logrus.DebugLevel)
+			break;
+		case "warning":
+			logrus.SetLevel(logrus.WarnLevel)
+			break;
+		case "error":
+			logrus.SetLevel(logrus.ErrorLevel)
+			break;
+		default:
+			logrus.SetLevel(logrus.InfoLevel)
+	}
+
 	if *versionFlag {
-		fmt.Printf("%s\n", VERSION)
+		logrus.Infof("%s\n", VERSION)
 		return
 	}
 
-	log.Printf("----CEPHER----")
-	log.Printf("INFO: starting Cepher plugin version %s", VERSION)
-	log.Printf("INFO: canCreateVolumes=%v, removeAction=%q", *canCreateVolumes, removeActionFlag)
-	log.Printf(
-		"INFO: Setting up Ceph Driver for PluginID=%s, cluster=%s, ceph-user=%s, pool=%s, mount=%s, config=%s",
+	logrus.Infof("====Starting Cepher plugin version %s====", VERSION)
+	logrus.Debugf("canCreateVolumes=%v, removeAction=%q", *canCreateVolumes, removeActionFlag)
+	logrus.Infof(
+		"Setting up Ceph Driver for PluginID=%s, cluster=%s, ceph-user=%s, pool=%s, mount=%s, config=%s",
 		*pluginName,
 		*cephCluster,
 		*cephUser,
@@ -89,14 +102,6 @@ func main() {
 		*rootMountDir,
 		*cephConfigFile,
 	)
-
-	// double check for config file - required especially for non-standard configs
-	if *cephConfigFile == "" {
-		log.Fatal("FATAL: Unable to use ceph rbd tool without config file")
-	}
-	if _, err := os.Stat(*cephConfigFile); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Unable to find ceph config needed for ceph rbd tool: %s", err)
-	}
 
 	// build driver struct -- but don't create connection yet
 	d := newCephRBDVolumeDriver(
@@ -108,21 +113,21 @@ func main() {
 		*cephConfigFile,
 	)
 
-	log.Println("INFO: Initializing driver instance")
+	logrus.Debugf("Initializing driver instance")
 	err := d.init()
 	if err != nil {
-		log.Fatalf("FATAL: error during driver initialization: %s", err)
+		logrus.Errorf("error during driver initialization: %s", err)
 	}
 
-	log.Println("INFO: Creating Docker VolumeDriver Handler")
+	logrus.Debugf("Creating Docker VolumeDriver Handler")
 	h := volume.NewHandler(d)
 
 	socket := socketPath()
-	log.Printf("INFO: Opening Socket for Docker to connect: %s", socket)
+	logrus.Infof("Opening Socket for Docker to connect: %s", socket)
 	// ensure directory exists
 	err = os.MkdirAll(filepath.Dir(socket), os.ModeDir)
 	if err != nil {
-		log.Fatalf("FATAL: Error creating socket directory: %s", err)
+		logrus.Errorf("Error creating socket directory: %s", err)
 	}
 
 	// setup signal handling after logging setup and creating driver, in order to signal the logfile and ceph connection
@@ -134,7 +139,7 @@ func main() {
 			//sig := <-signalChannel
 			switch sig {
 			case syscall.SIGTERM, syscall.SIGKILL:
-				log.Printf("INFO: received TERM or KILL signal: %s", sig)
+				logrus.Infof("received TERM or KILL signal: %s", sig)
 				os.Exit(0)
 			}
 		}
@@ -144,11 +149,6 @@ func main() {
 	err = h.ServeUnix(socket, currentGid())
 
 	if err != nil {
-		log.Printf("ERROR: Unable to create UNIX socket: %v", err)
+		logrus.Errorf("Unable to create UNIX socket: %v", err)
 	}
-}
-
-// isDebugEnabled checks for RBD_DOCKER_PLUGIN_DEBUG environment variable
-func isDebugEnabled() bool {
-	return *debugFlag || os.Getenv("RBD_DOCKER_PLUGIN_DEBUG") == "1"
 }

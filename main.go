@@ -10,7 +10,8 @@ import (
 	_ "path/filepath"
 	_ "syscall"
 
-    _ "github.com/docker/go-plugins-helpers/volume"
+	_ "github.com/docker/go-plugins-helpers/volume"
+	_ "github.com/Sirupsen/logrus"
     // _ "go-plugins-helpers/volume"
 )
 
