@@ -1,20 +1,78 @@
 {
-    "description": "Ceph RBD volume plugin for Docker",
+    "description": "Ceph RBD volume plugin",
     "documentation": "https://github.com/flaviostutz/cepher",
     "entrypoint": [
-        "/docker-volume-cepher"
+        "/startup.sh"
     ],
     "env": [
         {
-            "name": "LOG_LEVEL",
-            "Description": "One of debug, info, warning or error",
+            "name": "MONITOR_HOSTS",
             "settable": [
                 "value"
-            ],
-            "value": "0"
-        },
-        {
-            "name": "RBD_CONF_KEYRING_USER",
+            ]
+        }, {
+            "name": "CEPH_KEYRING_BASE64",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "ETCD_URL",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "CEPH_AUTH",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "CEPH_USER",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "CEPH_CLUSTER_NAME",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "ENABLE_AUTO_CREATE_VOLUMES",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "DEFAULT_IMAGE_SIZE",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "DEFAULT_IMAGE_FS",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "DEFAULT_POOL_NAME",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "DEFAULT_POOL_CREATE",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "DEFAULT_POOL_PG_NUM",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "DEFAULT_POOL_QUOTA_MAX_BYTES",
+            "settable": [
+                "value"
+            ]
+        }, {
+            "name": "LOG_LEVEL",
+            "Description": "One of debug, info, warning or error",
             "settable": [
                 "value"
             ]
@@ -63,5 +121,5 @@
     "network": {
         "type": "host"
     },
-    "propagatedmount": "/mnt/cepher-driver"
+    "propagatedmount": "/mnt/cepher"
 }
