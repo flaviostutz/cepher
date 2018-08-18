@@ -2,7 +2,102 @@
 Docker Volume Plugin that enables the management of volumes on Ceph RBD backends.
 This is a hard fork of https://github.com/yp-engineering/rbd-docker-plugin
 
-## Usage
+## Usage (managed plugin)
+
+* Set HOST_IP on .env to your machine IP
+* Run a sample Ceph Storage Cluster
+
+docker-compose.yml
+
+```
+  etcd0:
+    image: quay.io/coreos/etcd
+    network_mode: host
+    environment:
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:12379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://${HOST_IP}:12379
+
+  mon1:
+    image: flaviostutz/ceph-monitor
+    network_mode: host
+    environment:
+      - LOG_LEVEL=0
+      - CREATE_CLUSTER=true
+      - ETCD_URL=http://${HOST_IP}:12379
+      - MONITOR_ADVERTISE_ADDRESS=${HOST_IP}:16789
+      - MONITOR_BIND_PORT=16789
+
+  mgr1:
+    image: flaviostutz/ceph-manager
+    ports:
+      - 18443:8443 #dashboard https
+      - 18003:8003 #restful https
+      - 19283:9283 #prometheus
+    environment:
+      - MONITOR_HOSTS=${HOST_IP}:16789
+      - ETCD_URL=http://${HOST_IP}:12379
+
+  osd1:
+    image: flaviostutz/ceph-osd
+    network_mode: host
+    pid: host
+    environment:
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:16789
+      - OSD_EXT4_SUPPORT=true
+      - OSD_JOURNAL_SIZE=512
+      - OSD_CRUSH_LOCATION=root=default host=host1
+      - ETCD_URL=http://${HOST_IP}:12379
+      # - OSD_PUBLIC_IP=${HOST_IP}
+      # - OSD_CLUSTER_IP=${HOST_IP}
+
+  osd2:
+    image: flaviostutz/ceph-osd
+    network_mode: host
+    pid: host
+    environment:
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:16789
+      - OSD_EXT4_SUPPORT=true
+      - OSD_JOURNAL_SIZE=512
+      - OSD_CRUSH_LOCATION=root=default host=host2
+      - ETCD_URL=http://${HOST_IP}:12379
+
+  osd3:
+    image: flaviostutz/ceph-osd
+    network_mode: host
+    pid: host
+    environment:
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:16789
+      - OSD_EXT4_SUPPORT=true
+      - OSD_JOURNAL_SIZE=512
+      - OSD_CRUSH_LOCATION=root=default host=host3
+      - ETCD_URL=http://${HOST_IP}:12379
+
+```
+
+* Run Cepher plugin
+
+```
+docker plugin install flaviostutz/cepher \
+  --grant-all-permissions \
+  --alias=cepher \
+  MONITOR_HOSTS="${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:16789" \
+  ETCD_URL="http://${HOST_IP}:12379" \
+  DEFAULT_IMAGE_SIZE=1 \
+  ENABLE_AUTO_CREATE_VOLUMES=true
+
+* Test it!
+
+docker run -it --rm --volume-driver=cepher --name first --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "echo -n 'Hello ' >> /mnt/foo/hello"
+
+docker run -it --rm --volume-driver=cepher --name second --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "cat /mnt/foo/hello"
+
+```
+
+
+## Usage (non managed plugin run)
 
 * Set HOST_IP on .env to your machine IP
 * Run a sample Ceph Storage Cluster along with cepher
@@ -139,7 +234,7 @@ docker-compose.yml
 # created on Ceph during volume creation
 # after echoing to a file in the newly created volume, this container will exit 
 # and remove its instance's data, but not the image data.
-docker run -it --rm --volume-driver=cepher --name first --volume mypool/myimage:/mnt/foo ubuntu /bin/bash -c "echo -n 'Hello ' >> /mnt/foo/hello"
+docker run -it --rm --volume-driver=cepher --name first --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "echo -n 'Hello ' >> /mnt/foo/hello"
 
 # run a second docker container, but use the same volume/image from the previous
 # step so that we can see the persisted data

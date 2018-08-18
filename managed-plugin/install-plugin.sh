@@ -3,10 +3,9 @@
 set -x
 set -e
 
-source .env
+source ../.env
 
-# docker plugin install flaviostutz/cepher \
-docker plugin install cepher_cepher \
+docker plugin install flaviostutz/cepher \
   --grant-all-permissions \
   --alias=cepher \
   MONITOR_HOSTS="${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:16789" \

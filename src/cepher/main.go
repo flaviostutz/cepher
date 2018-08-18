@@ -9,9 +9,9 @@ import (
 	"flag"
 	"os"
 	"fmt"
-	"os/signal"
 	"path/filepath"
-	"syscall"
+	// "os/signal"
+	// "syscall"
 
 	"github.com/docker/go-plugins-helpers/volume"
 	"github.com/Sirupsen/logrus"
@@ -23,13 +23,11 @@ var (
 
 	// Plugin Option Flags
 	versionFlag        = flag.Bool("version", false, "Print version")
-	logLevel           = flag.String("debug", "INFO", "LogLevels: DEBUG, INFO, WARNING, ERROR")
-	pluginName         = flag.String("name", "cepher", "Docker plugin name for use on --volume-driver option")
+	logLevel           = flag.String("loglevel", "info", "debug, info, warning, error")
 	cephUser           = flag.String("user", "admin", "Ceph user")
 	cephConfigFile     = flag.String("config", "/etc/ceph/ceph.conf", "Ceph cluster config") // more likely to have config file pointing to cluster
 	cephCluster        = flag.String("cluster", "", "Ceph cluster")                          // less likely to run multiple clusters on same hardware
 	defaultCephPool    = flag.String("pool", "volumes", "Default Ceph Pool for RBD operations")
-	pluginDir          = flag.String("plugins", "/run/docker/plugins", "Docker plugin directory for socket")
 	rootMountDir       = flag.String("mount", "/mnt/cepher", "Mount directory for volumes on host")
 	canCreateVolumes   = flag.Bool("create", false, "Can auto Create RBD Images")
 	defaultImageSizeMB = flag.Int("size", 3*1024, "RBD Image size to Create (in MB) (default: 3072=3GB)")
@@ -67,11 +65,12 @@ func init() {
 	flag.Parse()
 }
 
-func socketPath() string {
-	return filepath.Join(*pluginDir, *pluginName+".sock")
-}
+// func socketPath() string {
+// 	return filepath.Join(*pluginDir, *pluginName+".sock")
+// }
 
 func main() {
+	logrus.Infof("Loglevel=%s", *logLevel)
 	switch *logLevel {
 		case "debug":
 			logrus.SetLevel(logrus.DebugLevel)
@@ -94,8 +93,7 @@ func main() {
 	logrus.Infof("====Starting Cepher plugin version %s====", VERSION)
 	logrus.Debugf("canCreateVolumes=%v, removeAction=%q", *canCreateVolumes, removeActionFlag)
 	logrus.Infof(
-		"Setting up Ceph Driver for PluginID=%s, cluster=%s, ceph-user=%s, pool=%s, mount=%s, config=%s",
-		*pluginName,
+		"Setting up Ceph Driver for cluster=%s, ceph-user=%s, pool=%s, mount=%s, config=%s",
 		*cephCluster,
 		*cephUser,
 		*defaultCephPool,
@@ -105,7 +103,6 @@ func main() {
 
 	// build driver struct -- but don't create connection yet
 	d := newCephRBDVolumeDriver(
-		*pluginName,
 		*cephCluster,
 		*cephUser,
 		*defaultCephPool,
@@ -122,32 +119,31 @@ func main() {
 	logrus.Debugf("Creating Docker VolumeDriver Handler")
 	h := volume.NewHandler(d)
 
-	socket := socketPath()
-	logrus.Infof("Opening Socket for Docker to connect: %s", socket)
+	socketAddress := "/run/docker/plugins/cepher.sock"
+	logrus.Infof("Opening Socket for Docker to connect at %s gid=%s", socketAddress, currentGid())
 	// ensure directory exists
-	err = os.MkdirAll(filepath.Dir(socket), os.ModeDir)
+	err = os.MkdirAll(filepath.Dir(socketAddress), os.ModeDir)
 	if err != nil {
 		logrus.Errorf("Error creating socket directory: %s", err)
 	}
 
 	// setup signal handling after logging setup and creating driver, in order to signal the logfile and ceph connection
 	// NOTE: systemd will send SIGTERM followed by SIGKILL after a timeout to stop a service daemon
-	signalChannel := make(chan os.Signal, 2) // chan with buffer size 2
-	signal.Notify(signalChannel, syscall.SIGTERM, syscall.SIGKILL)
-	go func() {
-		for sig := range signalChannel {
-			//sig := <-signalChannel
-			switch sig {
-			case syscall.SIGTERM, syscall.SIGKILL:
-				logrus.Infof("received TERM or KILL signal: %s", sig)
-				os.Exit(0)
-			}
-		}
-	}()
+	// signalChannel := make(chan os.Signal, 2) // chan with buffer size 2
+	// signal.Notify(signalChannel, syscall.SIGTERM, syscall.SIGKILL)
+	// go func() {
+	// 	for sig := range signalChannel {
+	// 		//sig := <-signalChannel
+	// 		switch sig {
+	// 		case syscall.SIGTERM, syscall.SIGKILL:
+	// 			logrus.Infof("received TERM or KILL signal: %s", sig)
+	// 			os.Exit(0)
+	// 		}
+	// 	}
+	// }()
 
 	// open socket
-	err = h.ServeUnix(socket, currentGid())
-
+	err = h.ServeUnix(socketAddress, currentGid())
 	if err != nil {
 		logrus.Errorf("Unable to create UNIX socket: %v", err)
 	}

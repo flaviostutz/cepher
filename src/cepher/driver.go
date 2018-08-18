@@ -62,7 +62,7 @@ type cephRBDVolumeDriver struct {
 	// - using default ceph cluster name ("ceph")
 	// - using default ceph config (/etc/ceph/<cluster>.conf)
 
-	name    string             // unique name for plugin
+	// name    string             // unique name for plugin
 	cluster string             // ceph cluster to use (default: ceph)
 	user    string             // ceph user to use (default: admin)
 	pool    string             // ceph pool to use (default: rbd)
@@ -72,13 +72,12 @@ type cephRBDVolumeDriver struct {
 }
 
 // newCephRBDVolumeDriver builds the driver struct, reads config file and connects to cluster
-func newCephRBDVolumeDriver(pluginName, cluster, userName, defaultPoolName, mountDir, config string) cephRBDVolumeDriver {
+func newCephRBDVolumeDriver(cluster, userName, defaultPoolName, mountDir, config string) cephRBDVolumeDriver {
 	// the root mount dir will be based on docker default root and plugin name - pool added later per volume
 	logrus.Debugf("setting base mount dir to %s", mountDir)
 
 	// fill everything except the connection and context
 	driver := cephRBDVolumeDriver{
-		name:    pluginName,
 		cluster: cluster,
 		user:    userName,
 		pool:    defaultPoolName,

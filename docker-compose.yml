@@ -2,22 +2,22 @@ version: '3.5'
 
 services:
 
-  cepher:
-    build: .
-    network_mode: host
-    environment:
-      - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:16789
-      - DEFAULT_IMAGE_SIZE=1
-      - ENABLE_AUTO_CREATE_VOLUMES=true
-      - LOG_LEVEL=info
-      - ETCD_URL=http://${HOST_IP}:12379
-    privileged: true
-    volumes:
-      - /run/docker/plugins:/run/docker/plugins
-      - /mnt:/mnt
-      - /dev:/dev
-      - /sys:/sys
-      - /lib:/lib
+  # cepher:
+  #   build: .
+  #   network_mode: host
+  #   environment:
+  #     - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:16789
+  #     - DEFAULT_IMAGE_SIZE=1
+  #     - ENABLE_AUTO_CREATE_VOLUMES=true
+  #     - LOG_LEVEL=debug
+  #     - ETCD_URL=http://${HOST_IP}:12379
+  #   privileged: true
+  #   volumes:
+  #     - /run/docker/plugins:/run/docker/plugins
+  #     - /mnt:/mnt
+  #     - /dev:/dev
+  #     - /sys:/sys
+  #     - /lib:/lib
 
   etcd0:
     image: quay.io/coreos/etcd

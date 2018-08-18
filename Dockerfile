@@ -18,6 +18,7 @@ FROM flaviostutz/ceph-client
 RUN apt-get update
 RUN apt-get install -y librados-dev librbd-dev
 
+#default ENV values ignored when using managed plugins
 ENV MONITOR_HOSTS ''
 ENV CEPH_KEYRING_BASE64 ''
 ENV ETCD_URL ''
@@ -35,7 +36,6 @@ ENV DEFAULT_POOL_QUOTA_MAX_BYTES ''
 ENV LOG_LEVEL 'info'
 
 COPY --from=BUILD /go/bin/* /bin/
-ADD config.json /
 ADD startup.sh /
 ADD ceph.conf.template /
 
