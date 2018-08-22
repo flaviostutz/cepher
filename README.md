@@ -96,7 +96,7 @@ docker plugin install flaviostutz/cepher \
   --alias=cepher \
   MONITOR_HOSTS="${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:16789" \
   ETCD_URL="http://${HOST_IP}:12379" \
-  DEFAULT_IMAGE_SIZE=1 \
+  DEFAULT_IMAGE_SIZE=100 \
   ENABLE_AUTO_CREATE_VOLUMES=true
 
 ```
