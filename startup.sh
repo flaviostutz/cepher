@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-set -x
+# set -x
 
 export PLUGIN_NAME="cepher"
 export MOUNT_PATH="/mnt/cepher"
@@ -19,10 +19,16 @@ if [ "$ENABLE_AUTO_CREATE_VOLUMES" == "" ]; then
     export ENABLE_AUTO_CREATE_VOLUMES="false"
 fi 
 if [ "$DEFAULT_IMAGE_SIZE" == "" ]; then
-    export DEFAULT_IMAGE_SIZE="1"
+    export DEFAULT_IMAGE_SIZE="100"
 fi 
 if [ "$DEFAULT_IMAGE_FS" == "" ]; then
     export DEFAULT_IMAGE_FS="xfs"
+fi 
+if [ "$VOLUME_REMOVE_ACTION" == "" ]; then
+    export VOLUME_REMOVE_ACTION="rename"
+fi 
+if [ "$DEFAULT_IMAGE_FEATURES" == "" ]; then
+    export DEFAULT_IMAGE_FEATURES="layering,striping,exclusive-lock,object-map,fast-diff,journaling"
 fi 
 if [ "$DEFAULT_POOL_NAME" == "" ]; then
     export DEFAULT_POOL_NAME="volumes"
@@ -32,6 +38,9 @@ if [ "$DEFAULT_POOL_CREATE" == "" ]; then
 fi 
 if [ "$DEFAULT_POOL_PG_NUM" == "" ]; then
     export DEFAULT_POOL_PG_NUM="100"
+fi 
+if [ "$USE_RBD_KERNEL_MODULE" == "" ]; then
+    export USE_RBD_KERNEL_MODULE="false"
 fi 
 if [ "$LOG_LEVEL" == "" ]; then
     export LOG_LEVEL="info"
@@ -78,13 +87,16 @@ rbd pool init ${DEFAULT_POOL_NAME}
 
 echo "Starting Cepher..."
 cepher \
-    --user $CEPH_USER \
-    --cluster $CEPH_CLUSTER_NAME \
-    --pool $DEFAULT_POOL_NAME \
-    --mount $MOUNT_PATH \
-    --create $ENABLE_AUTO_CREATE_VOLUMES \
-    --fs $DEFAULT_IMAGE_FS \
-    --size $DEFAULT_IMAGE_SIZE \
-    --loglevel $LOG_LEVEL \
-    --config /etc/ceph/ceph.conf
+    --user=$CEPH_USER \
+    --cluster=$CEPH_CLUSTER_NAME \
+    --pool=$DEFAULT_POOL_NAME \
+    --mount=$MOUNT_PATH \
+    --create=$ENABLE_AUTO_CREATE_VOLUMES \
+    --fs=$DEFAULT_IMAGE_FS \
+    --size=$DEFAULT_IMAGE_SIZE \
+    --loglevel=$LOG_LEVEL \
+    --features=$DEFAULT_IMAGE_FEATURES
+    --remove-action=$VOLUME_REMOVE_ACTION
+    --kernel-module=$USE_RBD_KERNEL_MODULE
+    --config=/etc/ceph/ceph.conf
 

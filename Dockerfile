@@ -16,7 +16,7 @@ RUN go get -v cepher
 FROM flaviostutz/ceph-client
 
 RUN apt-get update
-RUN apt-get install -y librados-dev librbd-dev
+RUN apt-get install -y librados-dev librbd-dev rbd-nbd
 
 #default ENV values ignored when using managed plugins
 ENV MONITOR_HOSTS ''
@@ -27,12 +27,15 @@ ENV CEPH_AUTH 'cephx'
 ENV CEPH_USER 'admin'
 ENV CEPH_CLUSTER_NAME 'ceph'
 ENV ENABLE_AUTO_CREATE_VOLUMES 'false'
-ENV DEFAULT_IMAGE_SIZE 5
+ENV DEFAULT_IMAGE_SIZE 100
 ENV DEFAULT_IMAGE_FS 'xfs'
+ENV DEFAULT_IMAGE_FEATURES 'layering,striping,exclusive-lock,object-map,fast-diff,journaling'
+ENV VOLUME_REMOVE_ACTION 'rename'
 ENV DEFAULT_POOL_NAME 'volumes'
 ENV DEFAULT_POOL_CREATE 'true'
 ENV DEFAULT_POOL_PG_NUM 100
 ENV DEFAULT_POOL_QUOTA_MAX_BYTES ''
+ENV USE_RBD_KERNEL_MODULE false
 ENV LOG_LEVEL 'info'
 
 COPY --from=BUILD /go/bin/* /bin/
@@ -44,5 +47,6 @@ ADD ceph.conf.template /
 # VOLUME [ "/sys" ]
 # VOLUME [ "/lib" ]
 # VOLUME [ "/mnt" ]
+# VOLUME [ "/proc" ]
 
 CMD [ "/startup.sh" ]

@@ -59,31 +59,65 @@ type Volume struct {
 
 // our driver type for impl func
 type cephRBDVolumeDriver struct {
-	// - using default ceph cluster name ("ceph")
-	// - using default ceph config (/etc/ceph/<cluster>.conf)
-
-	// name    string             // unique name for plugin
-	cluster string             // ceph cluster to use (default: ceph)
-	user    string             // ceph user to use (default: admin)
-	pool    string             // ceph pool to use (default: rbd)
-	root    string             // scratch dir for mounts for this plugin
-	config  string             // ceph config file to read
-	m       *sync.Mutex        // mutex to guard operations that change volume maps or use conn
+	cephCluster				string
+	cephUser				string
+	defaultCephPool			string
+	rootMountDir			string
+	cephConfigFile			string
+	canCreateVolumes		bool
+	defaultImageSizeMB		int
+	defaultImageFSType		string
+	defaultImageFeatures	string
+	defaultRemoveAction		string
+	useRBDKernelModule		bool
+	m      					*sync.Mutex
 }
 
 // newCephRBDVolumeDriver builds the driver struct, reads config file and connects to cluster
-func newCephRBDVolumeDriver(cluster, userName, defaultPoolName, mountDir, config string) cephRBDVolumeDriver {
-	// the root mount dir will be based on docker default root and plugin name - pool added later per volume
-	logrus.Debugf("setting base mount dir to %s", mountDir)
+func newCephRBDVolumeDriver(cephCluster,
+		cephUser string,
+		defaultCephPool string,
+		rootMountDir string,
+		cephConfigFile string,
+		canCreateVolumes bool,
+		defaultImageSizeMB int,
+		defaultImageFSType string,
+		defaultImageFeatures string,
+		defaultRemoveAction string,
+		useRBDKernelModule bool) cephRBDVolumeDriver {
 
-	// fill everything except the connection and context
+	logrus.Infof(
+		"Setting up Ceph Docker Volume Plugin. cephCluster=%s, cephUser=%s, defaultCephPool=%s, rootMountDir=%s, cephConfigFile=%s, canCreateVolumes=%s, defaultImageSizeMB=%s, defaultImageFSType=%s, defaultImageFeatures=%s, defaultRemoveAction=%s, useRBDKernelModule=%s",
+		cephCluster,
+		cephUser,
+		defaultCephPool,
+		rootMountDir,
+		cephConfigFile,
+		canCreateVolumes,
+		defaultImageSizeMB,
+		defaultImageFSType,
+		defaultImageFeatures,
+		defaultRemoveAction,
+		useRBDKernelModule,
+	)
+
+	if(useRBDKernelModule) {
+		logrus.Warn("The driver is configured to use the RBD Kernel Module. It has better performance but currently supports only image features layering, stripping and exclusive-lock")
+	}
+
 	driver := cephRBDVolumeDriver{
-		cluster: cluster,
-		user:    userName,
-		pool:    defaultPoolName,
-		root:    mountDir,
-		config:  config,
-		m:       &sync.Mutex{},
+		cephCluster:			cephCluster,
+		cephUser:				cephUser,
+		defaultCephPool:		defaultCephPool,
+		rootMountDir:			rootMountDir,
+		cephConfigFile:			cephConfigFile,
+		canCreateVolumes:		canCreateVolumes,
+		defaultImageSizeMB:		defaultImageSizeMB,
+		defaultImageFSType:		defaultImageFSType,
+		defaultImageFeatures:	defaultImageFeatures,
+		defaultRemoveAction:	defaultRemoveAction,
+		useRBDKernelModule:		useRBDKernelModule,
+		m:       				&sync.Mutex{},
 	}
 
 	return driver
@@ -137,7 +171,7 @@ func (d cephRBDVolumeDriver) Capabilities() *volume.CapabilitiesResponse {
 //    Respond with a string error if an error occurred.
 //
 func (d cephRBDVolumeDriver) Create(r *volume.CreateRequest) error {
-	logrus.Infof(">>>>>>>> DOCKER API CREATE(%q)", r)
+	logrus.Infof(">>> DOCKER API CREATE(%q)", r)
 	d.m.Lock()
 	defer d.m.Unlock()
 	return d.CreateInternal(r)
@@ -146,7 +180,8 @@ func (d cephRBDVolumeDriver) Create(r *volume.CreateRequest) error {
 func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 	logrus.Debugf("CreateInternal(%q)", r)
 
-	fstype := *defaultImageFSType
+	fstype := d.defaultImageFSType
+	imageFeatures := d.defaultImageFeatures
 
 	// parse image name optional/default pieces
 	pool, name, size, err := d.parseImagePoolNameSize(r.Name)
@@ -160,6 +195,9 @@ func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 	if r.Options["pool"] != "" {
 		pool = r.Options["pool"]
 	}
+	if r.Options["name"] != "" {
+		name = r.Options["name"]
+	}
 	if r.Options["size"] != "" {
 		size, err = strconv.Atoi(r.Options["size"])
 		if err != nil {
@@ -171,6 +209,9 @@ func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 	if r.Options["fstype"] != "" {
 		fstype = r.Options["fstype"]
 	}
+	if r.Options["features"] != "" {
+		imageFeatures = r.Options["features"]
+	}
 
 	logrus.Debugf("verify if image already exists on RBD cluster")
 	exists, err := d.rbdImageExists(pool, name)
@@ -181,9 +222,9 @@ func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 
 	} else if !exists {
 		logrus.Debugf("Ceph Image doesn't exist yet")
-		if *canCreateVolumes {
+		if d.canCreateVolumes {
 			logrus.Debugf("create image on RBD Cluster")
-			err = d.createRBDImage(pool, name, size, fstype)
+			err = d.createRBDImage(pool, name, size, fstype, imageFeatures)
 			if err != nil {
 				errString := fmt.Sprintf("Unable to create RBD Image %s/%s: %s", pool, name, err)
 				logrus.Errorf(errString)
@@ -221,7 +262,7 @@ func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 //    Respond with a string error if an error occurred.
 //
 func (d cephRBDVolumeDriver) Remove(r *volume.RemoveRequest) error {
-	logrus.Infof(">>>>>>>> DOCKER API REMOVE(%q)", r)
+	logrus.Infof(">>> DOCKER API REMOVE(%q)", r)
 	d.m.Lock()
 	defer d.m.Unlock()
 	return d.RemoveInternal(r)
@@ -250,7 +291,7 @@ func (d cephRBDVolumeDriver) RemoveInternal(r *volume.RemoveRequest) error {
 		logrus.Errorf(errString)
 		return errors.New(errString)
 	} else {
-		logrus.Debugf("RBD Image %s/%s exists. Proceeding to removal using action '%s'", pool, name, removeActionFlag)
+		logrus.Debugf("RBD Image %s/%s exists. Proceeding to removal using action '%s'", pool, name, d.defaultRemoveAction)
 	}
 
 	// // attempt to gain lock before remove - lock seems to disappear after rm (but not after rename)
@@ -262,7 +303,7 @@ func (d cephRBDVolumeDriver) RemoveInternal(r *volume.RemoveRequest) error {
 	// }
 
 	// remove action can be: ignore, delete or rename
-	if removeActionFlag == "delete" {
+	if d.defaultRemoveAction == "delete" {
 		logrus.Debugf("Deleting RBD Image %s/%s from Ceph Cluster", pool, name)
 		err = d.removeRBDImage(pool, name)
 		if err != nil {
@@ -273,7 +314,7 @@ func (d cephRBDVolumeDriver) RemoveInternal(r *volume.RemoveRequest) error {
 		}
 
 		// defer d.unlockImage(pool, name, locker)
-	} else if removeActionFlag == "rename" {
+	} else if d.defaultRemoveAction == "rename" {
 		logrus.Debugf("Renaming RBD Image %s/%s in Ceph Cluster to zz_ prefix", pool, name)
 		// TODO: maybe add a timestamp?
 		err = d.renameRBDImage(pool, name, "zz_"+name)
@@ -317,7 +358,7 @@ func (d cephRBDVolumeDriver) RemoveInternal(r *volume.RemoveRequest) error {
 //
 // TODO: utilize the new MountRequest.ID field to track volumes
 func (d cephRBDVolumeDriver) Mount(r *volume.MountRequest) (*volume.MountResponse, error) {
-	logrus.Infof(">>>>>>>> DOCKER API MOUNT(%q)", r)
+	logrus.Infof(">>> DOCKER API MOUNT(%q)", r)
 	d.m.Lock()
 	defer d.m.Unlock()
 	return d.MountInternal(r)
@@ -369,7 +410,7 @@ func (d cephRBDVolumeDriver) MountInternal(r *volume.MountRequest) (*volume.Moun
 			if err != nil {
 				logrus.Warnf("unable to detect RBD Image %s/%s fstype: %s", name, err)
 				// NOTE: don't fail - FOR NOW we will assume default plugin fstype
-				fstype = *defaultImageFSType
+				fstype = d.defaultImageFSType
 			}
 
 			// double check image filesystem if possible
@@ -437,17 +478,17 @@ func (d cephRBDVolumeDriver) MountInternal(r *volume.MountRequest) (*volume.Moun
 //    made available).
 //
 func (d cephRBDVolumeDriver) List() (*volume.ListResponse, error) {
-	logrus.Infof(">>>>>>>> DOCKER API LIST")
+	logrus.Infof(">>> DOCKER API LIST")
 	return d.ListInternal();
 }
 
 func (d cephRBDVolumeDriver) ListInternal() (*volume.ListResponse, error) {
 	logrus.Debugf("API ListInternal")
 
-	logrus.Debugf("Retrieving all images from default RBD Pool %s", d.pool)
+	logrus.Debugf("Retrieving all images from default RBD Pool %s", d.defaultCephPool)
 	defaultImages, err := d.rbdList()
 	if err != nil {
-		logrus.Errorf("Error getting images from RBD Pool %s: %s", d.pool, err)
+		logrus.Errorf("Error getting images from RBD Pool %s: %s", d.defaultCephPool, err)
 		return nil, err
 	}
 
@@ -472,7 +513,7 @@ func (d cephRBDVolumeDriver) ListInternal() (*volume.ListResponse, error) {
 	}
 
 	for _,v := range defaultImages {
-		var vname = fmt.Sprintf("%s/%s", d.pool, v)
+		var vname = fmt.Sprintf("%s/%s", d.defaultCephPool, v)
 		_, ok := vnames[vname]
 		if(!ok) {
 			apiVol := &volume.Volume{Name: vname}
@@ -496,7 +537,7 @@ func (d cephRBDVolumeDriver) ListInternal() (*volume.ListResponse, error) {
 //    { "Volume": { "Name": "volume_name", "Mountpoint": "/path/to/directory/on/host" }}
 //
 func (d cephRBDVolumeDriver) Get(r *volume.GetRequest) (*volume.GetResponse, error) {
-	logrus.Infof(">>>>>>>> DOCKER API GET(%s", r)
+	logrus.Infof(">>> DOCKER API GET(%s", r)
 	return d.GetInternal(r)
 }
 
@@ -554,7 +595,7 @@ func (d cephRBDVolumeDriver) GetInternal(r *volume.GetRequest) (*volume.GetRespo
 // FIXME: does volume API require error if Volume requested does not exist/is not mounted? Similar to List/Get leaving mountpoint empty?
 //
 func (d cephRBDVolumeDriver) Path(r *volume.PathRequest) (*volume.PathResponse, error) {
-	logrus.Infof(">>>>>>>> DOCKER API PATH(%s", r)
+	logrus.Infof(">>> DOCKER API PATH(%s", r)
 	return d.PathInternal(r)
 }
 
@@ -602,7 +643,7 @@ func (d cephRBDVolumeDriver) PathInternal(r *volume.PathRequest) (*volume.PathRe
 //    Respond with error or nil
 //
 func (d cephRBDVolumeDriver) Unmount(r *volume.UnmountRequest) error {
-	logrus.Infof(">>>>>>>> DOCKER API UNMOUNT(%s", r)
+	logrus.Infof(">>> DOCKER API UNMOUNT(%s", r)
 	d.m.Lock()
 	defer d.m.Unlock()
 	return d.UnmountInternal(r)
@@ -701,7 +742,7 @@ func (d cephRBDVolumeDriver) UnmountInternal(r *volume.UnmountRequest) error {
 
 // rbdList performs an `rbd ls` on the default pool
 func (d *cephRBDVolumeDriver) rbdList() ([]string, error) {
-	result, err := d.rbdsh(d.pool, "ls")
+	result, err := d.rbdsh(d.defaultCephPool, "ls")
 	if err != nil {
 		return nil, err
 	}
@@ -711,7 +752,7 @@ func (d *cephRBDVolumeDriver) rbdList() ([]string, error) {
 
 // mountpoint returns the expected path on host
 func (d *cephRBDVolumeDriver) mountpoint(pool, name string) string {
-	return filepath.Join(d.root, pool, name)
+	return filepath.Join(d.rootMountDir, pool, name)
 }
 
 // parseImagePoolNameSize parses out any optional parameters from Image Name
@@ -744,7 +785,7 @@ func (d *cephRBDVolumeDriver) parseImagePoolNameSize(fullname string) (pool stri
 	}
 
 	// 2: pool
-	pool = d.pool // defaul pool for plugin
+	pool = d.defaultCephPool // defaul pool for plugin
 	if matches[2] != "" {
 		pool = matches[2]
 	}
@@ -753,13 +794,13 @@ func (d *cephRBDVolumeDriver) parseImagePoolNameSize(fullname string) (pool stri
 	imagename = matches[3]
 
 	// 5: size
-	size = *defaultImageSizeMB
+	size = d.defaultImageSizeMB
 	if matches[5] != "" {
 		var err error
 		size, err = strconv.Atoi(matches[5])
 		if err != nil {
 			logrus.Warnf("using default. unable to parse int from %s: %s", matches[5], err)
-			size = *defaultImageSizeMB
+			size = d.defaultImageSizeMB
 		}
 	}
 
@@ -780,8 +821,8 @@ func (d *cephRBDVolumeDriver) rbdImageExists(pool, findName string) (bool, error
 }
 
 // createRBDImage will create a new Ceph block device and make a filesystem on it
-func (d *cephRBDVolumeDriver) createRBDImage(pool string, name string, size int, fstype string) error {
-	logrus.Infof("Creating new RBD Image pool=%s; name=%s; size=%s; fs=%s)", pool, name, size, fstype)
+func (d *cephRBDVolumeDriver) createRBDImage(pool string, name string, size int, fstype string, features string) error {
+	logrus.Infof("Creating new RBD Image pool=%s; name=%s; size=%s; fs=%s; features=%s)", pool, name, size, fstype, features)
 
 	// check that fs is valid type (needs mkfs.fstype in PATH)
 	mkfs, err := exec.LookPath("mkfs." + fstype)
@@ -790,15 +831,25 @@ func (d *cephRBDVolumeDriver) createRBDImage(pool string, name string, size int,
 		return errors.New(msg)
 	}
 
-	logrus.Debugf("Creating RBD Image %s/%s in Ceph cluster with features layering, striping and exclusive-lock", pool, name)
-	_, err = d.rbdsh(
-		pool, "create",
-		"--image-format", strconv.Itoa(2),
-		"--size", strconv.Itoa(size),
-		"--image-feature", "layering", 
-		"--image-feature", "striping", 
-		"--image-feature", "exclusive-lock",
-		name)
+	//prepare call
+	ics := strings.Split(features, ",")
+	cargs := make([]string, 0)
+	cargs = append(cargs, name)
+	cargs = append(cargs, []string{"--image-format", strconv.Itoa(2), "--size", strconv.Itoa(size)}...)
+	for _,v := range ics {
+		cargs = append(cargs, []string{"--image-feature", v}...)
+	}
+	
+	// _, err = shWithDefaultTimeout("rbd", cargs...)
+
+	//perform call
+	_, err = d.rbdsh(pool, "create", cargs...)
+		// "--image-format", strconv.Itoa(2),
+		// "--size", strconv.Itoa(size),
+		// "--image-feature", "layering", 
+		// "--image-feature", "striping", 
+		// "--image-feature", "exclusive-lock",
+		// name)
 	if err != nil {
 		err := fmt.Sprintf("error creating RBD Image %s/%s: %s", pool, name, err)
 		logrus.Errorf("%s", err)
@@ -966,28 +1017,80 @@ func (d *cephRBDVolumeDriver) renameRBDImage(pool, name, newname string) error {
 
 // mapImage will map the RBD Image to a kernel device
 func (d *cephRBDVolumeDriver) mapImage(pool, imagename string) (string, error) {
-	logrus.Debugf("Mapping RBD image %s/%s to kernel device", pool, imagename)
-	return d.rbdsh(pool, "map", imagename)
+	if d.useRBDKernelModule {
+		logrus.Debugf("Mapping RBD image %s/%s using RBD Kernel module", pool, imagename)
+		return d.rbdsh(pool, "map", imagename)
+	} else {
+		logrus.Debugf("Mapping RBD image %s/%s using nbd-rbd client", pool, imagename)
+		// return shWithDefaultTimeout("rbd-nbd", "--exclusive", "map", pool + "/" + imagename)
+		return shWithDefaultTimeout("rbd-nbd", "map", pool + "/" + imagename)
+	}
 }
 
 // unmapImageDevice will release the mapped kernel device
 func (d *cephRBDVolumeDriver) unmapImageDevice(device string) error {
-	// NOTE: this does not even require a user nor a pool, just device name
-	_, err := d.rbdsh("", "unmap", device)
-	return err
+	if d.useRBDKernelModule {
+		logrus.Debugf("Unmapping device %s using RBD Kernel module", device)
+		_, err := d.rbdsh("", "unmap", device)
+		return err
+	} else {
+		logrus.Debugf("Unmapping device %s using rbd-rbd client", device)
+		_, err := shWithDefaultTimeout("rbd-nbd", "unmap", device)
+		return err
+	}
 }
 
 // list mapped kernel devices
 func (d *cephRBDVolumeDriver) listMappedDevices() ([]*Volume, error) {
-	// NOTE: this does not even require a user nor a pool, just device name
-	result, err := d.rbdsh("", "device", "list")
-	if err != nil {
-		return nil, err
+	var devices string = ""
+	if d.useRBDKernelModule {
+		logrus.Debug("Listing mapped devices using RBD Kernel module")
+		result, err := d.rbdsh("", "device", "list")
+		if err != nil {
+			return nil, err
+		}
+		devices = result
+	} else {
+		logrus.Debug("Listing mapped devices using rbd-nbd client")
+		result, err := shWithDefaultTimeout("rbd-nbd", "list-mapped")
+		if err != nil {
+			logrus.Debugf("Error listing mapped devices. Maybe no devices found. Ignoring: %s", err)
+		} else {
+			devices = result
+		}
+
+		//doing something to list mapped devices inspired on https://github.com/ceph/ceph/blob/master/src/tools/rbd_nbd/rbd-nbd.cc
+		// result1, err := shWithDefaultTimeout("find", "/sys/block/nbd*/pid")
+		// if err != nil {
+		// 	logrus.Debugf("Error listing mapped devices: %s", err)
+		// }
+		// re := regexp.MustCompile(`.*\/(nbd[0-9]+)\/pid`)
+		// devices = re.ReplaceAllString(result1, "/dev/$1")
+		// logrus.Debugf("result1: %s", result1)
+		// var result3 string = ""
+		// devices = result1
+		// var lines = strings.Split(result1, "\n")
+		// for _,v := range lines {
+		// 	if(v == "") {
+		// 		continue
+		// 	}
+		// 	result2, err := shWithDefaultTimeout("cat", v)
+		// 	logrus.Debugf("result2: %s", result2)
+		// 	if err != nil {
+		// 		logrus.Debugf("Error listing mapped devices: %s", err)
+		// 	}
+		// 	if result2 != "0" {
+		// 		result3 += v + "\n"
+		// 	}
+		// 	logrus.Debugf("result3: %s", result3)
+		// }
 	}
+
+	logrus.Debugf("Mapped devices found: %s", devices)
 
 	var mappings[]*Volume
 
-	var lines = strings.Split(result, "\n")
+	var lines = strings.Split(devices, "\n")
 	var header bool = false
 	for _,v := range lines {
 		if !header {
@@ -1121,7 +1224,7 @@ func (d *cephRBDVolumeDriver) unmountDevice(device string) error {
 
 // rbdsh will call rbd with the given command arguments, also adding config, user and pool flags
 func (d *cephRBDVolumeDriver) rbdsh(pool, command string, args ...string) (string, error) {
-	args = append([]string{"--conf", d.config, "--id", d.user, command}, args...)
+	args = append([]string{"--conf", d.cephConfigFile, "--id", d.cephUser, command}, args...)
 	if pool != "" {
 		args = append([]string{"--pool", pool}, args...)
 	}

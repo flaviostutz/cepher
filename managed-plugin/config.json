@@ -121,5 +121,6 @@
     "network": {
         "type": "host"
     },
+    "pidhost" : true,
     "propagatedmount": "/mnt/cepher"
 }

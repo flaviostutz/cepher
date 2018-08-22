@@ -2,75 +2,35 @@
 //http://github.com/yp-engineering/rbd-docker-plugin
 package main
 
-// Ceph RBD VolumeDriver Docker Plugin, setup config and go
-
 import (
-	"errors"
 	"flag"
 	"os"
-	"fmt"
 	"path/filepath"
-	// "os/signal"
-	// "syscall"
 
 	"github.com/docker/go-plugins-helpers/volume"
 	"github.com/Sirupsen/logrus"
     // "go-plugins-helpers/volume"
 )
 
-var (
-	VALID_REMOVE_ACTIONS = []string{"ignore", "delete", "rename"}
-
-	// Plugin Option Flags
-	versionFlag        = flag.Bool("version", false, "Print version")
-	logLevel           = flag.String("loglevel", "info", "debug, info, warning, error")
-	cephUser           = flag.String("user", "admin", "Ceph user")
-	cephConfigFile     = flag.String("config", "/etc/ceph/ceph.conf", "Ceph cluster config") // more likely to have config file pointing to cluster
-	cephCluster        = flag.String("cluster", "", "Ceph cluster")                          // less likely to run multiple clusters on same hardware
-	defaultCephPool    = flag.String("pool", "volumes", "Default Ceph Pool for RBD operations")
-	rootMountDir       = flag.String("mount", "/mnt/cepher", "Mount directory for volumes on host")
-	canCreateVolumes   = flag.Bool("create", false, "Can auto Create RBD Images")
-	defaultImageSizeMB = flag.Int("size", 3*1024, "RBD Image size to Create (in MB) (default: 3072=3GB)")
-	defaultImageFSType = flag.String("fs", "xfs", "FS type for the created RBD Image (must have mkfs.type)")
-)
-
-// setup a validating flag for remove action
-type removeAction string
-
-func (a *removeAction) String() string {
-	return string(*a)
-}
-
-func (a *removeAction) Set(value string) error {
-	if !contains(VALID_REMOVE_ACTIONS, value) {
-		return errors.New(fmt.Sprintf("Invalid value: %s, valid values are: %q", value, VALID_REMOVE_ACTIONS))
-	}
-	*a = removeAction(value)
-	return nil
-}
-
-func contains(vals []string, check string) bool {
-	for _, v := range vals {
-		if check == v {
-			return true
-		}
-	}
-	return false
-}
-
-var removeActionFlag removeAction = "ignore"
-
-func init() {
-	flag.Var(&removeActionFlag, "remove", "Action to take on Remove: ignore, delete or rename")
-	flag.Parse()
-}
-
-// func socketPath() string {
-// 	return filepath.Join(*pluginDir, *pluginName+".sock")
-// }
+const VERSION = "1.0.0-beta"
 
 func main() {
-	logrus.Infof("Loglevel=%s", *logLevel)
+	versionFlag        := flag.Bool("version", false, "Print version")
+	logLevel           := flag.String("loglevel", "info", "debug, info, warning, error")
+	cephCluster        := flag.String("cluster", "", "Ceph cluster")                          // less likely to run multiple clusters on same hardware
+	cephUser           := flag.String("user", "admin", "Ceph user")
+	defaultCephPool    := flag.String("pool", "volumes", "Default Ceph Pool for RBD operations")
+	rootMountDir       := flag.String("mount", "/mnt/cepher", "Mount directory for volumes on host")
+	cephConfigFile     := flag.String("config", "/etc/ceph/ceph.conf", "Ceph cluster config") // more likely to have config file pointing to cluster
+	canCreateVolumes   := flag.Bool("create", false, "Can auto Create RBD Images")
+	defaultImageSizeMB := flag.Int("size", 3*1024, "RBD Image size to Create (in MB) (default: 3072=3GB)")
+	defaultImageFSType 	:= flag.String("fs", "xfs", "FS type for the created RBD Image (must have mkfs.type)")
+	defaultImageFeatures := flag.String("features", "layering,stripping,exclusive-lock", "Initial RBD Image features for new images")
+	defaultRemoveAction := flag.String("remove-action", "rename", "Action to be performed when receiving a command to 'remove' a volume. Options are: 'ignore' (won't remove image from Ceph), 'delete' (will delete image from Ceph - irreversible!) or 'rename' (rename image prefixing it by 'zz_')")
+	useRBDKernelModule := flag.Bool("kernel-module", false, "If true, will use the Linux Kernel RBD module for mapping Ceph Images to block devices, which has greater performance, but currently supports only features 'layering', 'striping' and 'exclusive-lock'. Else, use rbd-nbd Ceph library (apt-get install rbd-nbd) which supports all Ceph image features available")
+	flag.Parse()
+
+	logrus.Infof("useRBDKernelModule=%s", *useRBDKernelModule)
 	switch *logLevel {
 		case "debug":
 			logrus.SetLevel(logrus.DebugLevel)
@@ -91,23 +51,19 @@ func main() {
 	}
 
 	logrus.Infof("====Starting Cepher plugin version %s====", VERSION)
-	logrus.Debugf("canCreateVolumes=%v, removeAction=%q", *canCreateVolumes, removeActionFlag)
-	logrus.Infof(
-		"Setting up Ceph Driver for cluster=%s, ceph-user=%s, pool=%s, mount=%s, config=%s",
-		*cephCluster,
-		*cephUser,
-		*defaultCephPool,
-		*rootMountDir,
-		*cephConfigFile,
-	)
 
-	// build driver struct -- but don't create connection yet
 	d := newCephRBDVolumeDriver(
 		*cephCluster,
 		*cephUser,
 		*defaultCephPool,
 		*rootMountDir,
 		*cephConfigFile,
+		*canCreateVolumes,
+		*defaultImageSizeMB,
+		*defaultImageFSType,
+		*defaultImageFeatures,
+		*defaultRemoveAction,
+		*useRBDKernelModule,
 	)
 
 	logrus.Debugf("Initializing driver instance")
@@ -126,21 +82,6 @@ func main() {
 	if err != nil {
 		logrus.Errorf("Error creating socket directory: %s", err)
 	}
-
-	// setup signal handling after logging setup and creating driver, in order to signal the logfile and ceph connection
-	// NOTE: systemd will send SIGTERM followed by SIGKILL after a timeout to stop a service daemon
-	// signalChannel := make(chan os.Signal, 2) // chan with buffer size 2
-	// signal.Notify(signalChannel, syscall.SIGTERM, syscall.SIGKILL)
-	// go func() {
-	// 	for sig := range signalChannel {
-	// 		//sig := <-signalChannel
-	// 		switch sig {
-	// 		case syscall.SIGTERM, syscall.SIGKILL:
-	// 			logrus.Infof("received TERM or KILL signal: %s", sig)
-	// 			os.Exit(0)
-	// 		}
-	// 	}
-	// }()
 
 	// open socket
 	err = h.ServeUnix(socketAddress, currentGid())

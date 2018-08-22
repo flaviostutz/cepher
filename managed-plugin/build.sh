@@ -14,4 +14,4 @@ docker rmi -f cepher-rootfsimage
 docker plugin rm -f flaviostutz/cepher || true
 docker plugin create flaviostutz/cepher .
 
-#for pushing to repo, "docker plugin push flaviostutz/cepher"
+echo "For pushing this plugin to repo, 'docker plugin push flaviostutz/cepher'"
