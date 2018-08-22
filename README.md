@@ -11,7 +11,7 @@ This plugin will perform the following:
 
 #### Performance note
 
-Modern Linux Kernel comes with a Ceph module for mapping images as virtual devices on OS. This module is very efficient thou it doesn't support recent features on Ceph Images, like journaling and fast-diff. By default this plugin will use the 'rbd-nbd' instead of the kernel module. It does the same mapping as the kernel module, but with a little less performance but supports all Ceph Image features. If you with to force Kernel Module usage, set USE_RBD_KERNEL_MODULE to false.
+Modern Linux Kernel comes with a Ceph module for mapping images as virtual devices on OS. This module is very efficient but it doesn't support recent features on Ceph Images, like journaling and fast-diff. By default this plugin will use the 'rbd-nbd' instead of the kernel module. It does the same mapping as the kernel module, but with a little less performance but supports all Ceph Image features. If you with to force Kernel Module usage, set USE\_RBD\_KERNEL\_MODULE to false.
 
 ## Usage (managed plugin)
 
