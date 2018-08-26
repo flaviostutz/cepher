@@ -5,11 +5,11 @@ RUN go get -v github.com/Soulou/curl-unix-socket
 #doing dependency build separated from source build optimizes time for developer, but is not required
 #install external dependencies first
 # ADD go-plugins-helpers/Gopkg.toml $GOPATH/src/go-plugins-helpers/
-ADD /src/main.go $GOPATH/src/cepher/main.go
+ADD /main.go $GOPATH/src/cepher/main.go
 RUN go get -v cepher
 
 #now build source code
-ADD src $GOPATH/src
+ADD cepher $GOPATH/src/
 RUN go get -v cepher
 
 
