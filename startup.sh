@@ -42,6 +42,9 @@ fi
 if [ "$USE_RBD_KERNEL_MODULE" == "" ]; then
     export USE_RBD_KERNEL_MODULE="false"
 fi 
+if [ "$ENABLE_WRITE_LOCK" == "" ]; then
+    export ENABLE_WRITE_LOCK="true"
+fi 
 if [ "$LOG_LEVEL" == "" ]; then
     export LOG_LEVEL="info"
 fi 
@@ -57,6 +60,7 @@ echo "Starting CEPHER with MONITOR_HOSTS=$MONITOR_HOSTS \
     ENABLE_AUTO_CREATE_VOLUMES=$ENABLE_AUTO_CREATE_VOLUMES \
     DEFAULT_IMAGE_FS=$DEFAULT_IMAGE_FS \
     DEFAULT_IMAGE_SIZE=$DEFAULT_IMAGE_SIZE \
+    ENABLE_WRITE_LOCK=$ENABLE_WRITE_LOCK \
     LOG_LEVEL=$LOG_LEVEL"
 
 if [ ! -f /etc/ceph/ceph.conf ]; then
@@ -95,8 +99,9 @@ cepher \
     --fs=$DEFAULT_IMAGE_FS \
     --size=$DEFAULT_IMAGE_SIZE \
     --loglevel=$LOG_LEVEL \
-    --features=$DEFAULT_IMAGE_FEATURES
-    --remove-action=$VOLUME_REMOVE_ACTION
-    --kernel-module=$USE_RBD_KERNEL_MODULE
+    --features=$DEFAULT_IMAGE_FEATURES \
+    --remove-action=$VOLUME_REMOVE_ACTION \
+    --kernel-module=$USE_RBD_KERNEL_MODULE \
+    --write-lock=$ENABLE_WRITE_LOCK \
     --config=/etc/ceph/ceph.conf
 

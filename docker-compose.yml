@@ -25,15 +25,16 @@ services:
       - /lib:/lib
 
   etcd0:
-    image: quay.io/coreos/etcd
+    image: quay.io/coreos/etcd:v3.2.25
     network_mode: host
     environment:
       - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:12379
       - ETCD_ADVERTISE_CLIENT_URLS=http://${HOST_IP}:12379
 
   mon1:
-    image: flaviostutz/ceph-monitor
+    image: flaviostutz/ceph-monitor:13.2.0.2
     network_mode: host
+    pid: host
     environment:
       - LOG_LEVEL=0
       - CREATE_CLUSTER=true
@@ -43,8 +44,9 @@ services:
       - MONITOR_BIND_PORT=16789
 
   mon2:
-    image: flaviostutz/ceph-monitor
+    image: flaviostutz/ceph-monitor:13.2.0.2
     network_mode: host
+    pid: host
     environment:
       - ETCD_URL=http://${HOST_IP}:12379
       - PEER_MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:36789
@@ -52,8 +54,9 @@ services:
       - MONITOR_BIND_PORT=26789
 
   mon3:
-    image: flaviostutz/ceph-monitor
+    image: flaviostutz/ceph-monitor:13.2.0.2
     network_mode: host
+    pid: host
     environment:
       - ETCD_URL=http://${HOST_IP}:12379
       - PEER_MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789
@@ -61,7 +64,8 @@ services:
       - MONITOR_BIND_PORT=36789
 
   mgr1:
-    image: flaviostutz/ceph-manager
+    image: flaviostutz/ceph-manager:13.2.0.2
+    pid: host
     ports:
       - 18443:8443 #dashboard https
       - 18003:8003 #restful https
@@ -71,7 +75,7 @@ services:
       - ETCD_URL=http://${HOST_IP}:12379
 
   osd1:
-    image: flaviostutz/ceph-osd
+    image: flaviostutz/ceph-osd:13.2.0.2
     network_mode: host
     pid: host
     environment:
@@ -85,7 +89,7 @@ services:
       # - OSD_CLUSTER_IP=${HOST_IP}
 
   osd2:
-    image: flaviostutz/ceph-osd
+    image: flaviostutz/ceph-osd:13.2.0.2
     network_mode: host
     pid: host
     environment:
@@ -97,7 +101,7 @@ services:
       - ETCD_URL=http://${HOST_IP}:12379
 
   osd3:
-    image: flaviostutz/ceph-osd
+    image: flaviostutz/ceph-osd:13.2.0.2
     network_mode: host
     pid: host
     environment:

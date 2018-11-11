@@ -16,21 +16,23 @@ Modern Linux Kernel comes with a Ceph module for mapping images as virtual devic
 ## Usage (managed plugin)
 
 * Set HOST_IP on .env to your machine IP
+  * Not for Mac Users: you cannot access the ports exposed when using "network_mode: host", so the best is you to run Docker inside a Virtual Box Linux machine in this case
 * Run a sample Ceph Storage Cluster
 
 docker-compose.yml
 
 ```
   etcd0:
-    image: quay.io/coreos/etcd
+    image: quay.io/coreos/etcd:v3.2.25
     network_mode: host
     environment:
       - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:12379
       - ETCD_ADVERTISE_CLIENT_URLS=http://${HOST_IP}:12379
 
   mon1:
-    image: flaviostutz/ceph-monitor
+    image: flaviostutz/ceph-monitor:13.2.0.2
     network_mode: host
+    pid: host
     environment:
       - LOG_LEVEL=0
       - CREATE_CLUSTER=true
@@ -39,7 +41,8 @@ docker-compose.yml
       - MONITOR_BIND_PORT=16789
 
   mgr1:
-    image: flaviostutz/ceph-manager
+    image: flaviostutz/ceph-manager:13.2.0.2
+    pid: host
     ports:
       - 18443:8443 #dashboard https
       - 18003:8003 #restful https
@@ -49,7 +52,7 @@ docker-compose.yml
       - ETCD_URL=http://${HOST_IP}:12379
 
   osd1:
-    image: flaviostutz/ceph-osd
+    image: flaviostutz/ceph-osd:13.2.0.2
     network_mode: host
     pid: host
     environment:
@@ -63,7 +66,7 @@ docker-compose.yml
       # - OSD_CLUSTER_IP=${HOST_IP}
 
   osd2:
-    image: flaviostutz/ceph-osd
+    image: flaviostutz/ceph-osd:13.2.0.2
     network_mode: host
     pid: host
     environment:
@@ -75,7 +78,7 @@ docker-compose.yml
       - ETCD_URL=http://${HOST_IP}:12379
 
   osd3:
-    image: flaviostutz/ceph-osd
+    image: flaviostutz/ceph-osd:13.2.0.2
     network_mode: host
     pid: host
     environment:

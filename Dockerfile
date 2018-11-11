@@ -13,7 +13,7 @@ ADD cepher $GOPATH/src/
 RUN go get -v cepher
 
 
-FROM flaviostutz/ceph-client
+FROM flaviostutz/ceph-client:13.2.0.2
 
 RUN apt-get update
 RUN apt-get install -y librados-dev librbd-dev rbd-nbd
@@ -36,6 +36,7 @@ ENV DEFAULT_POOL_CREATE 'true'
 ENV DEFAULT_POOL_PG_NUM 100
 ENV DEFAULT_POOL_QUOTA_MAX_BYTES ''
 ENV USE_RBD_KERNEL_MODULE false
+ENV ENABLE_WRITE_LOCK true
 ENV LOG_LEVEL 'info'
 
 COPY --from=BUILD /go/bin/* /bin/
