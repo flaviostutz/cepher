@@ -9,7 +9,7 @@ ADD /main.go $GOPATH/src/cepher/main.go
 RUN go get -v cepher
 
 #now build source code
-ADD cepher $GOPATH/src/
+ADD cepher $GOPATH/src/cepher
 RUN go get -v cepher
 
 

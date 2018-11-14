@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-# set -x
+set -x
 
 export PLUGIN_NAME="cepher"
 export MOUNT_PATH="/mnt/cepher"

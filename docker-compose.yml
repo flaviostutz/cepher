@@ -4,6 +4,7 @@ services:
 
   cepher:
     build: .
+    image: flaviostutz/cepher:13.0
     network_mode: host
     environment:
       - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:16789

@@ -16,7 +16,7 @@ const VERSION = "1.1.0-beta"
 
 func main() {
 	versionFlag := flag.Bool("version", false, "Print version")
-	logLevel := flag.String("loglevel", "info", "debug, info, warning, error")
+	logLevel := flag.String("loglevel", "debug", "debug, info, warning, error")
 	cephCluster := flag.String("cluster", "", "Ceph cluster") // less likely to run multiple clusters on same hardware
 	cephUser := flag.String("user", "admin", "Ceph user")
 	defaultCephPool := flag.String("pool", "volumes", "Default Ceph Pool for RBD operations")
@@ -52,7 +52,7 @@ func main() {
 		return
 	}
 
-	if *enableExclusiveWriteLock && !*useRBDKernelModule {
+	if *enableExclusiveWriteLock && *useRBDKernelModule {
 		logrus.Errorf("option write-lock=true cannot be used when kernel-module=true. to use exclusive write lock, use kernel-module=false instead")
 		return
 	}
@@ -71,7 +71,6 @@ func main() {
 		*defaultImageFeatures,
 		*defaultRemoveAction,
 		*enableExclusiveWriteLock,
-		*writeLockTimeoutMillis,
 		*useRBDKernelModule,
 	)
 
