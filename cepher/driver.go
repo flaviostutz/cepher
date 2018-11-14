@@ -1254,26 +1254,26 @@ func (d *cephRBDVolumeDriver) attemptLimitedXFSRepair(fstype, device, mountpath 
 
 // mountDevice will call mount on kernel device with a docker volume subdirectory
 func (d *cephRBDVolumeDriver) mountDeviceToPath(fstype string, device string, path string, readonly bool) error {
-	if readonly {
-		// logrus.Infof("Path %s was mounted to %s in readonly mode. Make sure the mount options in Docker volume is :ro because the mount driver can't ensure the container won't write on a 'ro' mount (unfortunatelly!)", device, path)
-		path1 := path + ":rw"
-		err := os.MkdirAll(path1, os.ModeDir|os.FileMode(int(0775)))
-		if err != nil {
-			return err
-		}
-		//mount as rw for a workaround (mount with -o ro doesn't take effect)
-		_, err = shWithDefaultTimeout("mount", "-t", fstype, device, path1)
-		if err != nil {
-			return err
-		} else {
-			//now bind mount with readonly flag (ro option directly on the first mount doesn't work!)
-			_, err = shWithDefaultTimeout("mount", "-o", "bind,ro", path1, path)
-			return err
-		}
-	} else {
-		_, err := shWithDefaultTimeout("mount", "-t", fstype, device, path)
-		return err
-	}
+	// if readonly {
+	// 	// logrus.Infof("Path %s was mounted to %s in readonly mode. Make sure the mount options in Docker volume is :ro because the mount driver can't ensure the container won't write on a 'ro' mount (unfortunatelly!)", device, path)
+	// 	path1 := path + ":rw"
+	// 	err := os.MkdirAll(path1, os.ModeDir|os.FileMode(int(0775)))
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	//mount as rw for a workaround (mount with -o ro doesn't take effect)
+	// 	_, err = shWithDefaultTimeout("mount", "-t", fstype, device, path1)
+	// 	if err != nil {
+	// 		return err
+	// 	} else {
+	// 		//now bind mount with readonly flag (ro option directly on the first mount doesn't work!)
+	// 		_, err = shWithDefaultTimeout("mount", "-o", "bind,ro", path1, path)
+	// 		return err
+	// 	}
+	// } else {
+	_, err := shWithDefaultTimeout("mount", "-t", fstype, device, path)
+	return err
+	// }
 }
 
 // unmountDevice will call umount on kernel device to unmount from host's docker subdirectory
