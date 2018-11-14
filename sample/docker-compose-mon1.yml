@@ -1,0 +1,29 @@
+  etcd0:
+    image: quay.io/coreos/etcd:v3.2.25
+    network_mode: host
+    environment:
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:12379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://${ETCD_HOST}:12379
+
+  mon1:
+    image: flaviostutz/ceph-monitor:13.2.0.2
+    network_mode: host
+    pid: host
+    environment:
+      - LOG_LEVEL=0
+      - CREATE_CLUSTER=true
+      - ETCD_URL=http://${ETCD_HOST}:12379
+      - PEER_MONITOR_HOSTS=${MON2_IP}:26789,${MON3_IP}:36789
+      - MONITOR_ADVERTISE_ADDRESS=${MON1_IP}:16789
+      - MONITOR_BIND_PORT=16789
+
+  mgr1:
+    image: flaviostutz/ceph-manager:13.2.0.2
+    pid: host
+    ports:
+      - 18443:8443 #dashboard https
+      - 18003:8003 #restful https
+      - 19283:9283 #prometheus
+    environment:
+      - MONITOR_HOSTS=${MON1_IP}:16789,${MON2_IP}:26789,${MON3_IP}:16789
+      - ETCD_URL=http://${ETCD_HOST}:12379

@@ -1,0 +1,13 @@
+  osd1:
+    image: flaviostutz/ceph-osd:13.2.0.2
+    network_mode: host
+    pid: host
+    environment:
+      - LOG_LEVEL=0
+      - PEER_MONITOR_HOSTS=${MON1_IP}:16789,${MON2_IP}:26789,${MON3_IP}:36789
+      - ETCD_URL=http://${ETCD_IP}:12379
+      - OSD_IP=[host service network ip]
+      - OSD_CLUSTER_IP=[host cluster network ip]
+    volumes:
+      - /mnt/osd1-sda:/var/lib/ceph/osd
+

@@ -1,0 +1,9 @@
+  mon2:
+    image: flaviostutz/ceph-monitor:13.2.0.2
+    network_mode: host
+    pid: host
+    environment:
+      - ETCD_URL=http://${ETCD_IP}:12379
+      - PEER_MONITOR_HOSTS=${MON1_IP}:16789,${MON2_IP}:26789
+      - MONITOR_ADVERTISE_ADDRESS=${MON3_IP}:36789
+      - MONITOR_BIND_PORT=36789

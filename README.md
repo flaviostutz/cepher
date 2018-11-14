@@ -179,3 +179,67 @@ rbd ls default
 * size - image size when creating a new image in MB
 * fstype - filesystem type to create on newly created images. mkfs.[fstype] must be present in OS
 * features - Ceph image features applied to newly created images. defaults to 'layering,striping,exclusive-lock,object-map,fast-diff,journaling'
+
+ ## Sample production deployment
+
+* We will use 8 machines on this sample
+   * Machine 1 (MON): one MON container + one MGR container
+   * Machine 2 (MON): one MON container
+   * Machine 3 (MON): one MON container
+   * Machine 4 (OSD): one OSD container + 50GB disk attached
+   * Machine 5 (OSD): one OSD container + 50GB disk attached
+   * Machine 6 (OSD): one OSD container + 50GB disk attached
+   * Machine 7 (OSD): one OSD container + 50GB disk attached
+   * Machine 8 (DOCKER): docker daemon with Cepher plugin
+
+* Preparation
+   * Create a second network connecting OSD hosts
+   * On one machine, git clone http://github.com/flaviostutz/cepher
+   * Edit .env and set IPs accordingly
+   * Copy files to target machines
+
+* On Machine 1 (MON):
+   * run ```docker-compose up -f docker-compose-mon1.yml```
+
+* On Machine 2 (MON):
+   * run ```docker-compose up -f docker-compose-mon2.yml```
+
+* On Machine 3 (MON):
+   * run ```docker-compose up -f docker-compose-mon3.yml```
+
+* For each Machines 4-7 (OSD):
+   * edit docker-compose-osds.yml
+     * set OSD_IP to the IP of this host in the same network as the other Monitors
+     * set OSD_CLUSTER_IP to the IP of this host in the secondary network between OSDs
+   * Prepare storage
+     * Attach a disk to the host
+     * Format it to XFS
+     * Mount disk to '/mnt/osd1-sda' (place in fstab for automatic mounting during boot)
+   * run ```docker-compose up -f docker-compose-osds.yml```
+   * You can execute those exact steps for adding new storage even after the cluster is in use
+
+* On Machine 8:
+```
+docker plugin install flaviostutz/cepher \
+  --grant-all-permissions \
+  --alias=cepher \
+  MONITOR_HOSTS="${MON1_IP}:16789,${MON2_IP}:26789,${MON3_IP}:36789" \
+  ETCD_URL="http://${ETCD_IP}:12379" \
+  DEFAULT_IMAGE_SIZE=100 \
+  ENABLE_AUTO_CREATE_VOLUMES=true
+```
+
+* Validation
+   * On Machine 1 (MON1)
+```
+docker-compose exec mgr1 bash
+ceph -s
+#check for status
+```
+
+   * On Machine 8 (DOCKER)
+```
+docker run -it --rm --volume-driver=cepher --name first --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "echo -n 'Hello ' >> /mnt/foo/hello"
+
+docker run -it --rm --volume-driver=cepher --name second --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "cat /mnt/foo/hello"
+```
