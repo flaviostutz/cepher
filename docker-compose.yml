@@ -7,7 +7,7 @@ services:
     image: flaviostutz/cepher:13.0
     network_mode: host
     environment:
-      - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:16789
+      - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:36789
       - DEFAULT_IMAGE_SIZE=100
       - ENABLE_AUTO_CREATE_VOLUMES=true
       - LOG_LEVEL=debug
