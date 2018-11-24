@@ -11,6 +11,7 @@ RUN go get -v cepher
 #now build source code
 ADD cepher $GOPATH/src/cepher
 RUN go get -v cepher
+RUN go test -v cepher
 
 
 FROM flaviostutz/ceph-client:13.2.0.2
@@ -36,7 +37,7 @@ ENV DEFAULT_POOL_CREATE 'true'
 ENV DEFAULT_POOL_PG_NUM 100
 ENV DEFAULT_POOL_QUOTA_MAX_BYTES ''
 ENV USE_RBD_KERNEL_MODULE false
-ENV ENABLE_WRITE_LOCK true
+ENV LOCK_ETCDS "192.168.0.22:2375"
 ENV LOG_LEVEL 'info'
 
 COPY --from=BUILD /go/bin/* /bin/

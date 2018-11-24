@@ -112,3 +112,27 @@ services:
       - OSD_JOURNAL_SIZE=512
       - OSD_CRUSH_LOCATION=root=default host=host3
       - ETCD_URL=http://${HOST_IP}:12379
+
+  osd4:
+    image: flaviostutz/ceph-osd:13.2.0.2
+    network_mode: host
+    pid: host
+    environment:
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:36789
+      - OSD_EXT4_SUPPORT=true
+      - OSD_JOURNAL_SIZE=512
+      - OSD_CRUSH_LOCATION=root=default host=host3
+      - ETCD_URL=http://${HOST_IP}:12379
+
+  osd5:
+    image: flaviostutz/ceph-osd:13.2.0.2
+    network_mode: host
+    pid: host
+    environment:
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:16789,${HOST_IP}:26789,${HOST_IP}:36789
+      - OSD_EXT4_SUPPORT=true
+      - OSD_JOURNAL_SIZE=512
+      - OSD_CRUSH_LOCATION=root=default host=host2
+      - ETCD_URL=http://${HOST_IP}:12379

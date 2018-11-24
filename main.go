@@ -11,7 +11,13 @@ import (
 	_ "syscall"
 
 	_ "github.com/Sirupsen/logrus"
+	_ "github.com/docker/go-plugins-helpers/authorization"
+	_ "github.com/docker/go-plugins-helpers/sdk"
 	_ "github.com/docker/go-plugins-helpers/volume"
+	_ "github.com/etcd-io/etcd/contrib/recipes"
+	_ "go.etcd.io/etcd/clientv3"
+	_ "go.etcd.io/etcd/clientv3/concurrency"
+	_ "go.etcd.io/etcd/mvcc/mvccpb"
 	// _ "go-plugins-helpers/volume"
 )
 

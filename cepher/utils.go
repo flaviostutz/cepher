@@ -1,4 +1,4 @@
-//This is a hard fork from the great job done by 
+//This is a hard fork from the great job done by
 //http://github.com/yp-engineering/rbd-docker-plugin
 package main
 
@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
 	"github.com/Sirupsen/logrus"
 )
 
@@ -36,7 +37,7 @@ func currentGid() int {
 // sh is a simple os.exec Command tool, returns trimmed string output
 func sh(name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
-	logrus.Debugf("sh CMD: %q", cmd)
+	logrus.Debugf("sh CMD: %s", cmd)
 	// TODO: capture and output STDERR to logfile?
 	out, err := cmd.Output()
 	return strings.Trim(string(out), " \n"), err
@@ -69,7 +70,7 @@ func shWithTimeout(howLong time.Duration, name string, args ...string) (string, 
 	}
 	// set up the results channel
 	resultsChan := make(chan ShResult, 1)
-	logrus.Debugf("shWithTimeout: %v, %s, %v", howLong, name, args)
+	logrus.Debugf(">>>>EXEC: %s, %v", name, args)
 
 	// fire up the goroutine for the actual shell command
 	go func() {

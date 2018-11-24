@@ -102,6 +102,6 @@ cepher \
     --features=$DEFAULT_IMAGE_FEATURES \
     --remove-action=$VOLUME_REMOVE_ACTION \
     --kernel-module=$USE_RBD_KERNEL_MODULE \
-    --write-lock=$ENABLE_WRITE_LOCK \
+    --lock-etcd=$LOCK_ETCDS \
     --config=/etc/ceph/ceph.conf
 
