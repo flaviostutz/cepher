@@ -85,6 +85,7 @@ func (d *cephRBDVolumeDriver) init() error {
 		logrus.Warn("The driver is configured to use the RBD Kernel Module. It has better performance but currently supports only image features layering, stripping and exclusive-lock")
 	}
 
+	//TODO reconstruct locks from real kernel mapped devices on driver restart
 	if d.lockEtcdServers != "" {
 		logrus.Debugf("Setting up ETCD client to %s", d.lockEtcdServers)
 		endpoints := strings.Split(d.lockEtcdServers, ",")
@@ -1056,7 +1057,6 @@ func (d cephRBDVolumeDriver) mapImage(pool string, imagename string, readonly bo
 			err := rwMutex.RWLock(ctx)
 			defer cancel()
 			if err != nil {
-				rwMutex.Unlock()
 				return "", errors.New("Couldn't not acquire write lock for " + pool + "/" + imagename + ". err=" + err.Error())
 			}
 			logrus.Infof("Got RWLock for %s/%s", pool, imagename)
@@ -1065,7 +1065,6 @@ func (d cephRBDVolumeDriver) mapImage(pool string, imagename string, readonly bo
 			err := rwMutex.RLock(ctx)
 			defer cancel()
 			if err != nil {
-				rwMutex.Unlock()
 				return "", errors.New("Couldn't not acquire read lock for " + pool + "/" + imagename + ". err=" + err.Error())
 			}
 			logrus.Infof("Got RLock for %s/%s", pool, imagename)
