@@ -53,11 +53,9 @@ func main() {
 		return
 	}
 
-	// if *lockEnable {
-	if *lockEtcdServers == "" {
-		logrus.Errorf("lock-etcd parameter is required when lock-enable is true")
-		return
-	}
+	// if *lockEtcdServers == "" {
+	// 	logrus.Errorf("lock-etcd parameter is required")
+	// 	return
 	// }
 
 	logrus.Infof("====Starting Cepher plugin version %s====", VERSION)
@@ -81,6 +79,8 @@ func main() {
 
 	logrus.Debugf("Initializing driver instance")
 	err := driver.init()
+	logrus.Debugf("etcdLockSession=%s", driver.etcdLockSession)
+	logrus.Debugf("deviceLocks=%s", driver.deviceLocks)
 	if err != nil {
 		logrus.Errorf("error during driver initialization: %s", err)
 	}

@@ -102,6 +102,6 @@ cepher \
     --features=$DEFAULT_IMAGE_FEATURES \
     --remove-action=$VOLUME_REMOVE_ACTION \
     --kernel-module=$USE_RBD_KERNEL_MODULE \
-    --lock-etcd=$LOCK_ETCDS \
+    --lock-etcd=$ETCD_URL \
     --config=/etc/ceph/ceph.conf
 
