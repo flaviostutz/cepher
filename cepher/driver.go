@@ -768,6 +768,7 @@ func (d cephRBDVolumeDriver) rbdList() ([]string, error) {
 
 // mountpoint returns the expected path on host
 func (d cephRBDVolumeDriver) mountpoint(pool, name string, readonly bool) string {
+	//TODO add random hash to avoid mountpoint reusage (so that locks will be performed per instance bind)?
 	mp := filepath.Join(d.rootMountDir, pool, name)
 	if readonly {
 		mp = mp + ":ro"

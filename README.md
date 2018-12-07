@@ -230,14 +230,15 @@ docker plugin install flaviostutz/cepher \
 ```
 
 * Validation
-   * On Machine 1 (MON1)
+
+  * On Machine 1 (MON1)
 ```
 docker-compose exec mgr1 bash
 ceph -s
 #check for status
 ```
 
-   * On Machine 8 (DOCKER)
+  * On Machine 8 (DOCKER)
 ```
 docker run -it --rm --volume-driver=cepher --name first --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "echo -n 'Hello ' >> /mnt/foo/hello"
 
