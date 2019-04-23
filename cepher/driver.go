@@ -1135,7 +1135,7 @@ func (d cephRBDVolumeDriver) unmapImageDevice(device string) error {
 		}
 	} else {
 		logrus.Debugf("Unmapping device %s using rbd-rbd client", device)
-		_, err := shWithDefaultTimeout("rbd-nbd", "unmap", device)
+		_, err := shWithDefaultTimeout("rbd-nbd", "--timeout", "5", "unmap", device)
 		if err != nil {
 			return err
 		}
