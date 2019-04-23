@@ -3,7 +3,7 @@ package main
 import (
 	_ "errors"
 	_ "flag"
-	"fmt"
+	_ "fmt"
 	_ "log"
 	_ "os"
 	_ "os/signal"
