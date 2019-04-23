@@ -1109,13 +1109,13 @@ func (d cephRBDVolumeDriver) mapImageToDevice(pool string, imagename string, rea
 			//during tests, rbd --exclusive guarantees only one mapping with --exclusive will take place for an image.
 			//if the host is rebooted, the lock is released too. Right after unmap, the image is available for lock by another host immediatelly.
 			//works very well for --exclusive x --exclusive competitions
-			return shWithDefaultTimeout("rbd-nbd", "--exclusive", "map", pool+"/"+imagename)
+			return shWithDefaultTimeout("rbd-nbd", "--exclusive", "--timeout", "5", "map", pool+"/"+imagename)
 		} else {
 			//during tests, simultaneous mapping with --read-only is permitted, but
 			//it allows --read-only to be placed while there is another --exclusive mapping, which is bad.
 			//--exclusive while --read-only is in place works too (shouldn't!)
 			if d.etcdLockSession != nil {
-				return shWithDefaultTimeout("rbd-nbd", "--read-only", "map", pool+"/"+imagename)
+				return shWithDefaultTimeout("rbd-nbd", "--read-only", "--timeout", "5", "map", pool+"/"+imagename)
 			} else {
 				return "", errors.New("Only exclusive write access (single mapping of a volume) is supported at a time. For shared locks, specify a ETCD server for distributed RW Lock management (--lock-etcd)")
 			}
@@ -1135,7 +1135,7 @@ func (d cephRBDVolumeDriver) unmapImageDevice(device string) error {
 		}
 	} else {
 		logrus.Debugf("Unmapping device %s using rbd-rbd client", device)
-		_, err := shWithDefaultTimeout("rbd-nbd", "unmap", device)
+		_, err := shWithDefaultTimeout("rbd-nbd", "--timeout", "5", "unmap", device)
 		if err != nil {
 			return err
 		}
