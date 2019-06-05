@@ -10,7 +10,7 @@ import (
 	_ "path/filepath"
 	_ "syscall"
 
-	_ "github.com/Sirupsen/logrus"
+	_ "github.com/sirupsen/logrus"
 	_ "github.com/docker/go-plugins-helpers/authorization"
 	_ "github.com/docker/go-plugins-helpers/sdk"
 	_ "github.com/docker/go-plugins-helpers/volume"
@@ -23,5 +23,5 @@ import (
 )
 
 func main() {
-	fmt.Println("This is used for build caching purposes. Should be replaced.")
+	// fmt.Println("This is used for build caching purposes. Should be replaced.")
 }
