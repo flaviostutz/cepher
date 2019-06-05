@@ -39,12 +39,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/clientv3/concurrency"
 	"github.com/docker/go-plugins-helpers/volume"
 	"github.com/flaviostutz/etcd-lock/etcdlock"
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/clientv3/concurrency"
-	// "go-plugins-helpers/volume"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -100,7 +99,7 @@ func (d *cephRBDVolumeDriver) init() error {
 		if err != nil {
 			return err
 		}
-		logrus.Debugf("ETCD lock session ok %s", d.etcdLockSession)
+		logrus.Debugf("ETCD lock session ok %v", d.etcdLockSession)
 		d.deviceLocks = make(map[string]*etcdlock.RWMutex)
 	}
 
@@ -382,7 +381,7 @@ func (d cephRBDVolumeDriver) MountInternal(r *volume.MountRequest) (*volume.Moun
 
 			// map
 			logrus.Debugf("mapping kernel device to RBD Image")
-			logrus.Debugf("name=%s, readonly=%s", r.Name, readonly)
+			logrus.Debugf("name=%v, readonly=%v", r.Name, readonly)
 			device, err := d.mapImage(pool, name, readonly)
 			if err != nil {
 				logrus.Errorf("error mapping RBD Image %s/%s to kernel device: %s", pool, name, err)
@@ -394,7 +393,8 @@ func (d cephRBDVolumeDriver) MountInternal(r *volume.MountRequest) (*volume.Moun
 			// determine device FS type
 			fstype, err := d.deviceType(device)
 			if err != nil {
-				logrus.Warnf("unable to detect RBD Image %s/%s fstype: %s", name, err)
+				// logrus.Warnf("unable to detect RBD Image %s/%s fstype: %s", name, err)
+				logrus.Warnf("unable to detect RBD Image %s fstype: %s", name, err)
 				// NOTE: don't fail - FOR NOW we will assume default plugin fstype
 				fstype = d.defaultImageFSType
 			}
@@ -508,7 +508,7 @@ func (d cephRBDVolumeDriver) ListInternal() (*volume.ListResponse, error) {
 		}
 	}
 
-	logrus.Infof("Volumes found: %s", vols)
+	logrus.Infof("Volumes found: %+v", vols)
 	return &volume.ListResponse{Volumes: vols}, nil
 }
 
@@ -526,6 +526,8 @@ func (d cephRBDVolumeDriver) ListInternal() (*volume.ListResponse, error) {
 func (d cephRBDVolumeDriver) Get(r *volume.GetRequest) (*volume.GetResponse, error) {
 	logrus.Infof("")
 	logrus.Infof(">>> DOCKER API GET(%s", r)
+	d.m.Lock()
+	defer d.m.Unlock()
 	return d.GetInternal(r)
 }
 
@@ -646,7 +648,7 @@ func (d cephRBDVolumeDriver) PathInternal(r *volume.PathRequest) (*volume.PathRe
 //
 func (d cephRBDVolumeDriver) Unmount(r *volume.UnmountRequest) error {
 	logrus.Infof("")
-	logrus.Infof(">>> DOCKER API UNMOUNT(%s", r)
+	logrus.Infof(">>> DOCKER API UNMOUNT(%q)", r)
 	d.m.Lock()
 	defer d.m.Unlock()
 	return d.UnmountInternal(r)
@@ -665,6 +667,7 @@ func (d cephRBDVolumeDriver) UnmountInternal(r *volume.UnmountRequest) error {
 	}
 
 	mountpath := d.mountpoint(pool, name, readonly)
+	logrus.Debugf("-------> MOUNT PATH: %s", mountpath)
 
 	volumes, err := d.currentVolumes()
 	if err != nil {
@@ -851,7 +854,7 @@ func (d cephRBDVolumeDriver) rbdImageExists(pool, findName string) (bool, error)
 
 // createRBDImage will create a new Ceph block device and make a filesystem on it
 func (d cephRBDVolumeDriver) createRBDImage(pool string, name string, size int, fstype string, features string) error {
-	logrus.Infof("Creating new RBD Image pool=%s; name=%s; size=%s; fs=%s; features=%s)", pool, name, size, fstype, features)
+	logrus.Infof("Creating new RBD Image pool=%v; name=%v; size=%v; fs=%v; features=%v)", pool, name, size, fstype, features)
 
 	// check that fs is valid type (needs mkfs.fstype in PATH)
 	mkfs, err := exec.LookPath("mkfs." + fstype)
@@ -904,7 +907,8 @@ func (d cephRBDVolumeDriver) createRBDImage(pool string, name string, size int, 
 	}
 
 	logrus.Debugf("Formatting filesystem %s on device %s", fstype, device)
-	_, err = shWithTimeout(5*time.Minute, mkfs, device)
+	// _, err = (5*time.Minute, mkfs, device)
+	_, err = ExecShellTimeout(5*time.Minute, mkfs, device)
 	if err != nil {
 		defer d.unmapImageDevice(device)
 		err := fmt.Sprintf("error formatting filesystem %s on device %s: %s", fstype, device, err)
@@ -1050,7 +1054,7 @@ func (d cephRBDVolumeDriver) mapImage(pool string, imagename string, readonly bo
 	//acquire lock or fail if we can't get lock
 	var rwMutex *etcdlock.RWMutex
 	if d.etcdLockSession != nil {
-		logrus.Debugf("Getting RW Lock on ETCD for %s/%s. readonly=%s", pool, imagename, readonly)
+		logrus.Debugf("Getting RW Lock on ETCD for %s/%s. readonly=%v", pool, imagename, readonly)
 		rwMutex = etcdlock.NewRWMutex(d.etcdLockSession, "/cepher-locks/"+pool+"/"+imagename)
 		dl := time.Now().Add(time.Duration(d.lockTimeoutMillis) * time.Millisecond)
 		ctx, cancel := context.WithDeadline(context.Background(), dl)
@@ -1104,18 +1108,20 @@ func (d cephRBDVolumeDriver) mapImageToDevice(pool string, imagename string, rea
 		logrus.Debugf("Mapping RBD image %s/%s using RBD Kernel module", pool, imagename)
 		return d.rbdsh(pool, "map", imagename)
 	} else {
-		logrus.Debugf("Mapping RBD image %s/%s using nbd-rbd client. readonly=%s", pool, imagename, readonly)
+		logrus.Debugf("Mapping RBD image %s/%s using nbd-rbd client. readonly=%v", pool, imagename, readonly)
 		if !readonly {
 			//during tests, rbd --exclusive guarantees only one mapping with --exclusive will take place for an image.
 			//if the host is rebooted, the lock is released too. Right after unmap, the image is available for lock by another host immediatelly.
 			//works very well for --exclusive x --exclusive competitions
-			return shWithDefaultTimeout("rbd-nbd", "--exclusive", "--timeout", "5", "map", pool+"/"+imagename)
+			// return shWithDefaultTimeout("rbd-nbd", "--exclusive", "--timeout", "60", "map", pool+"/"+imagename)
+			return shWithDefaultTimeout("rbd-nbd", "--exclusive", "map", pool+"/"+imagename)
 		} else {
 			//during tests, simultaneous mapping with --read-only is permitted, but
 			//it allows --read-only to be placed while there is another --exclusive mapping, which is bad.
 			//--exclusive while --read-only is in place works too (shouldn't!)
 			if d.etcdLockSession != nil {
-				return shWithDefaultTimeout("rbd-nbd", "--read-only", "--timeout", "5", "map", pool+"/"+imagename)
+				// return shWithDefaultTimeout("rbd-nbd", "--read-only", "--timeout", "60", "map", pool+"/"+imagename)
+				return shWithDefaultTimeout("rbd-nbd", "--read-only", "map", pool+"/"+imagename)
 			} else {
 				return "", errors.New("Only exclusive write access (single mapping of a volume) is supported at a time. For shared locks, specify a ETCD server for distributed RW Lock management (--lock-etcd)")
 			}
@@ -1135,7 +1141,8 @@ func (d cephRBDVolumeDriver) unmapImageDevice(device string) error {
 		}
 	} else {
 		logrus.Debugf("Unmapping device %s using rbd-rbd client", device)
-		_, err := shWithDefaultTimeout("rbd-nbd", "--timeout", "5", "unmap", device)
+		_, err := shWithDefaultTimeout("rbd-nbd", "--timeout", "60", "unmap", device)
+		// _, err := shWithDefaultTimeout("rbd-nbd", "unmap", device)
 		if err != nil {
 			return err
 		}
@@ -1387,7 +1394,7 @@ func (d cephRBDVolumeDriver) currentVolumes() (map[string]*Volume, error) {
 		logrus.Errorf("%s", err)
 		return nil, errors.New(err)
 	}
-	logrus.Debugf("system mapped rbd kernel devices: %s", mapped)
+	logrus.Debugf("system mapped rbd kernel devices: %v", mapped)
 
 	mounts, err := d.listMounts()
 	if err != nil {
@@ -1395,7 +1402,7 @@ func (d cephRBDVolumeDriver) currentVolumes() (map[string]*Volume, error) {
 		logrus.Errorf("%s", err)
 		return nil, errors.New(err)
 	}
-	logrus.Debugf("system mounts: %s", mounts)
+	logrus.Debugf("system mounts: %v", mounts)
 
 	//transform array to map
 	var deviceToMountPathMap map[string]string
