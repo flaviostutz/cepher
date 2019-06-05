@@ -42,6 +42,7 @@ docker-compose.yml
 
   mgr1:
     image: flaviostutz/ceph-manager:13.2.0.2
+    network_mode: host
     pid: host
     ports:
       - 18443:8443 #dashboard https
@@ -181,6 +182,12 @@ rbd ls default
 * features - Ceph image features applied to newly created images. defaults to 'layering,striping,exclusive-lock,object-map,fast-diff,journaling'
 
  ## Sample production deployment
+
+ Sample production deployment setup use this configuration:
+ - Ubuntu 18.04 with kernel 4.15.0-50 (default)
+ - Docker 18.09.6
+ - docker-compose 1.23.2
+ - Ceph 13.2.5
 
 * We will use 8 machines on this sample
    * Machine 1 (MON): one MON container + one MGR container
