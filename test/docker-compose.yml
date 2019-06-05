@@ -1,0 +1,26 @@
+version: '3.5'
+
+services:
+
+  cepher-test:
+    build: ./image-generate
+    image: jairsjunior/cepher-cli-test
+    environment:
+      - MONITOR_HOSTS=${HOST_IP}:6789
+      - DEFAULT_IMAGE_SIZE=100
+      - ENABLE_AUTO_CREATE_VOLUMES=true
+      - LOG_LEVEL=debug
+      # - USE_RBD_KERNEL_MODULE=true
+      - USE_RBD_KERNEL_MODULE=false
+      # - DEFAULT_IMAGE_FEATURES=layering,striping,exclusive-lock
+      - DEFAULT_IMAGE_FEATURES=layering,striping,exclusive-lock,object-map,fast-diff,journaling
+      - ETCD_URL=http://${HOST_IP}:12379
+    network_mode: host
+    pid: host
+    privileged: true
+    volumes:
+      - /run/docker/plugins:/run/docker/plugins
+      - /mnt:/mnt
+      - /dev:/dev
+      - /sys:/sys
+      - /lib:/lib
