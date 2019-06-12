@@ -47,4 +47,11 @@ COPY --from=BUILD /go/bin/* /bin/
 ADD startup.sh /
 ADD ceph.conf.template /
 
+# VOLUME [ "/run/docker/plugins" ]
+# VOLUME [ "/dev" ]
+# VOLUME [ "/sys" ]
+# VOLUME [ "/lib" ]
+# VOLUME [ "/mnt" ]
+# VOLUME [ "/proc" ]
+
 CMD [ "/startup.sh" ]
