@@ -1,0 +1,81 @@
+version: '3.5'
+
+services:
+
+  etcd0:
+    image: quay.io/coreos/etcd:v3.2.25
+    network_mode: host
+    environment:
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:12379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://${HOST_IP}:12379
+
+  mon1:
+    image: flaviostutz/ceph-monitor:13.2.5
+    restart: always
+    network_mode: host
+    pid: host
+    environment:
+      - LOG_LEVEL=0
+      - CREATE_CLUSTER=true
+      - ETCD_URL=http://${HOST_IP}:12379
+      - MONITOR_ADVERTISE_ADDRESS=${HOST_IP}:6789
+      - MONITOR_BIND_PORT=6789
+
+  mgr1:
+    image: flaviostutz/ceph-manager:13.2.5
+    pid: host
+    network_mode: host
+    restart: always
+    environment:
+      - MONITOR_HOSTS=${HOST_IP}:6789
+      - ETCD_URL=http://${HOST_IP}:12379
+
+  osd1:
+    image: flaviostutz/ceph-osd:13.2.5
+    pid: host
+    network_mode: host
+    environment:
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:6789
+      - OSD_CRUSH_LOCATION=root=default host=host1
+      - ETCD_URL=http://${HOST_IP}:12379
+  
+  osd2:
+    image: flaviostutz/ceph-osd:13.2.5
+    pid: host
+    network_mode: host
+    environment:
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:6789
+      - OSD_CRUSH_LOCATION=root=default host=host2
+      - ETCD_URL=http://${HOST_IP}:12379
+  
+  osd3:
+    image: flaviostutz/ceph-osd:13.2.5
+    pid: host
+    network_mode: host
+    environment:
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:6789
+      - OSD_CRUSH_LOCATION=root=default host=host3
+      - ETCD_URL=http://${HOST_IP}:12379
+  
+  osd4:
+    image: flaviostutz/ceph-osd:13.2.5
+    pid: host
+    network_mode: host
+    environment:
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:6789
+      - OSD_CRUSH_LOCATION=root=default host=host4
+      - ETCD_URL=http://${HOST_IP}:12379
+
+  osd5:
+    image: flaviostutz/ceph-osd:13.2.5
+    pid: host
+    network_mode: host
+    environment:
+      - LOG_LEVEL=0
+      - MONITOR_HOSTS=${HOST_IP}:6789
+      - OSD_CRUSH_LOCATION=root=default host=host5
+      - ETCD_URL=http://${HOST_IP}:12379

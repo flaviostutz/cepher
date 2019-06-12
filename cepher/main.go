@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/volume"
+	"github.com/sirupsen/logrus"
 	// "go-plugins-helpers/volume"
 )
 
-const VERSION = "1.1.0-beta"
+const VERSION = "1.1.1-beta"
 
 func main() {
 	versionFlag := flag.Bool("version", false, "Print version")
@@ -33,7 +33,7 @@ func main() {
 	lockTimeoutMillis := flag.Uint64("lock-timeout", 10*1000, "If a host with a mounted device stops sending lock refreshs, it will be release to another host to mount the image after this time")
 	flag.Parse()
 
-	logrus.Infof("useRBDKernelModule=%s", *useRBDKernelModule)
+	logrus.Infof("useRBDKernelModule=%v", *useRBDKernelModule)
 	switch *logLevel {
 	case "debug":
 		logrus.SetLevel(logrus.DebugLevel)
@@ -79,8 +79,8 @@ func main() {
 
 	logrus.Debugf("Initializing driver instance")
 	err := driver.init()
-	logrus.Debugf("etcdLockSession=%s", driver.etcdLockSession)
-	logrus.Debugf("deviceLocks=%s", driver.deviceLocks)
+	logrus.Debugf("etcdLockSession=%v", driver.etcdLockSession)
+	logrus.Debugf("deviceLocks=%v", driver.deviceLocks)
 	if err != nil {
 		logrus.Errorf("error during driver initialization: %s", err)
 	}
@@ -89,7 +89,7 @@ func main() {
 	h := volume.NewHandler(driver)
 
 	socketAddress := "/run/docker/plugins/cepher.sock"
-	logrus.Infof("Opening Socket for Docker to connect at %s gid=%s", socketAddress, currentGid())
+	logrus.Infof("Opening Socket for Docker to connect at %s gid=%v", socketAddress, currentGid())
 	// ensure directory exists
 	err = os.MkdirAll(filepath.Dir(socketAddress), os.ModeDir)
 	if err != nil {

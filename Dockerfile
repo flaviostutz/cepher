@@ -1,20 +1,24 @@
-FROM golang:1.10 AS BUILD
+FROM golang:1.12.4-stretch AS BUILD
+
+RUN apt-get update
+RUN apt-get install -y librados-dev librbd-dev rbd-nbd
 
 RUN go get -v github.com/Soulou/curl-unix-socket
 
-#doing dependency build separated from source build optimizes time for developer, but is not required
-#install external dependencies first
-# ADD go-plugins-helpers/Gopkg.toml $GOPATH/src/go-plugins-helpers/
-ADD /main.go $GOPATH/src/cepher/main.go
-RUN go get -v cepher
+RUN mkdir /cepher
+WORKDIR /cepher
+
+ADD go.mod .
+ADD go.sum .
+RUN go mod download
 
 #now build source code
-ADD cepher $GOPATH/src/cepher
-RUN go get -v cepher
-RUN go test -v cepher
+ADD cepher/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o /go/bin/cepher .
 
+### ==> Mount New Image...
 
-FROM flaviostutz/ceph-client:13.2.0.2
+FROM flaviostutz/ceph-client:13.2.5
 
 RUN apt-get update
 RUN apt-get install -y librados-dev librbd-dev rbd-nbd

@@ -12,7 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-cmd/cmd"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -37,7 +38,7 @@ func currentGid() int {
 // sh is a simple os.exec Command tool, returns trimmed string output
 func sh(name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
-	logrus.Debugf("sh CMD: %s", cmd)
+	logrus.Debugf("sh CMD: %v", cmd)
 	// TODO: capture and output STDERR to logfile?
 	out, err := cmd.Output()
 	return strings.Trim(string(out), " \n"), err
@@ -49,6 +50,7 @@ type ShResult struct {
 	Err    error  // go error, not STDERR
 }
 
+//ShTimeoutError used for sh timeout
 type ShTimeoutError struct {
 	timeout time.Duration
 }
@@ -59,11 +61,12 @@ func (e ShTimeoutError) Error() string {
 
 // shWithDefaultTimeout will use the defaultShellTimeout so you dont have to pass one
 func shWithDefaultTimeout(name string, args ...string) (string, error) {
-	return shWithTimeout(defaultShellTimeout, name, args...)
+	// return shWithTimeout(defaultShellTimeout, name, args...)
+	return ExecShellTimeout(defaultShellTimeout, name, args...)
 }
 
 // shWithTimeout will run the Cmd and wait for the specified duration
-func shWithTimeout(howLong time.Duration, name string, args ...string) (string, error) {
+func ShWithTimeout(howLong time.Duration, name string, args ...string) (string, error) {
 	// duration can't be zero
 	if howLong <= 0 {
 		return "", fmt.Errorf("Timeout duration needs to be positive")
@@ -95,11 +98,11 @@ func grepLines(data string, like string) []string {
 		logrus.Errorf("unable to look for empty pattern")
 		return result
 	}
-	like_bytes := []byte(like)
+	likeBytes := []byte(like)
 
 	scanner := bufio.NewScanner(strings.NewReader(data))
 	for scanner.Scan() {
-		if bytes.Contains(scanner.Bytes(), like_bytes) {
+		if bytes.Contains(scanner.Bytes(), likeBytes) {
 			result = append(result, scanner.Text())
 		}
 	}
@@ -108,4 +111,60 @@ func grepLines(data string, like string) []string {
 	}
 
 	return result
+}
+
+//ExecShellTimeout execute shell command with timeout
+func ExecShellTimeout(timeout time.Duration, command string, args ...string) (string, error) {
+	logrus.Debugf("shell command: %s", command)
+	if len(args) > 0 {
+		command = command + " " + strings.Join(args, " ")
+	}
+	acmd := cmd.NewCmd("bash", "-c", command)
+	statusChan := acmd.Start() // non-blocking
+	running := true
+	// if ctx != nil {
+	// 	ctx.CmdRef = acmd
+	// }
+
+	//kill if taking too long
+	if timeout > 0 {
+		logrus.Debugf("Enforcing timeout %s", timeout)
+		go func() {
+			startTime := time.Now()
+			for running {
+				if time.Since(startTime) >= timeout {
+					logrus.Warnf("Stopping command execution because it is taking too long (%d seconds)", time.Since(startTime))
+					acmd.Stop()
+				}
+				time.Sleep(1 * time.Second)
+			}
+		}()
+	}
+
+	// logrus.Debugf("Waiting for command to finish...")
+	<-statusChan
+	// logrus.Debugf("Command finished")
+	running = false
+
+	out := GetCmdOutput(acmd)
+	status := acmd.Status()
+	logrus.Debugf("shell output (%d): %s", status.Exit, out)
+	if status.Exit != 0 {
+		return out, fmt.Errorf("Failed to run command: '%s'; exit=%d; out=%s", command, status.Exit, out)
+	}
+	return out, nil
+}
+
+//GetCmdOutput return content of executed command
+func GetCmdOutput(cmd *cmd.Cmd) string {
+	status := cmd.Status()
+	out := strings.Join(status.Stdout, "\n")
+	if len(status.Stderr) > 0 {
+		if len(out) > 0 {
+			out = out + "\n" + strings.Join(status.Stderr, "\n")
+		} else {
+			out = strings.Join(status.Stderr, "\n")
+		}
+	}
+	return out
 }
