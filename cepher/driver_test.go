@@ -84,7 +84,7 @@ func TestListCommand(t *testing.T) {
 	}
 	logrus.Debug(*response)
 
-	// Start 6 cicles of Create/Mount/Unmount/Remove Images from Ceph
+	// Start 6 cycles of Create/Mount/Unmount/Remove Images from Ceph
 	wg.Add(6)
 	go DoCompleteTask("volumes/test-1", driver)
 	go DoCompleteTask("volumes/test-2", driver)
@@ -99,29 +99,29 @@ func TestListCommand(t *testing.T) {
 
 func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 	defer wg.Done()
-	logrus.Debugf("Inciado %s", imageName)
+	logrus.Debugf("Starting %s", imageName)
 
 	//# Create Requests to Call at the same format received from docker volumes interface
 	var reqCreate volume.CreateRequest
 	reqCreate.Name = imageName
 	var reqMount volume.MountRequest
 	reqMount.Name = imageName
-	var reqUmount volume.UnmountRequest
-	reqUmount.Name = imageName
+	var reqUnmount volume.UnmountRequest
+	reqUnmount.Name = imageName
 	var reqRemove volume.RemoveRequest
 	reqRemove.Name = imageName
 
 	err := driver.Create(&reqCreate)
 	if err != nil {
 		logrus.Debugf("Error at Create Image")
-		// panic("Erro at Create Image")
+		// panic("Error at Create Image")
 	}
 	logrus.Debugf("Image created %s", imageName)
 
 	response, err := driver.Mount(&reqMount)
 	if err != nil {
-		logrus.Debugf("Erro at Mount Image")
-		panic("Erro at mount image")
+		logrus.Debugf("Error at Mount Image")
+		panic("Error at mount image")
 	}
 	logrus.Debugf("Image mounted Name: %s %s", imageName, response)
 
@@ -135,12 +135,12 @@ func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 
 	time.Sleep(10 * time.Second)
 
-	err = driver.Unmount(&reqUmount)
+	err = driver.Unmount(&reqUnmount)
 	if err != nil {
-		logrus.Debugf("Erro at Umount Image")
-		panic("Erro at umount image")
+		logrus.Debugf("Error at Unmount Image")
+		panic("Error at unmount image")
 	}
-	logrus.Debugf("Image umounted %s", imageName)
+	logrus.Debugf("Image unmounted %s", imageName)
 
 	err = driver.Remove(&reqRemove)
 	if err != nil {
