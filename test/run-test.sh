@@ -14,4 +14,4 @@ echo "Build the images.."
 docker-compose build
 
 echo "Running test.."
-HOST_IP=172.20.10.10 docker-compose up
+docker-compose up
