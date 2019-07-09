@@ -92,8 +92,10 @@ func TestListCommand(t *testing.T) {
 	go DoCompleteTask("volumes/test-4", driver)
 	go DoCompleteTask("volumes/test-5", driver)
 	go DoCompleteTask("volumes/test-6", driver)
-
 	wg.Wait()
+
+	RenameActionTest("volumes/test-7", driver)
+
 	logrus.Infof("==== Done! ====")
 }
 
@@ -151,4 +153,41 @@ func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 
 	logrus.Debugf("Done with %s", imageName)
 	return
+}
+
+func RenameActionTest(imageName string, driver cephRBDVolumeDriver) {
+
+	err := driver.Create(&volume.CreateRequest{Name: imageName})
+	if err != nil {
+		logrus.Debugf("Error at Create Image")
+		panic("Error at Create Image")
+	}
+	logrus.Debugf("Image created %s", imageName)
+
+	//Remove by renaming image to backup name
+	driver.defaultRemoveAction = "rename"
+	err = driver.Remove(&volume.RemoveRequest{Name: imageName})
+	if err != nil {
+		logrus.Debugf("Error at Remove Image")
+		panic("Error at Remove image")
+	}
+	logrus.Debugf("Image removed %s", imageName)
+
+	//retrieve backup image name to delete permanently
+	pool, parsedName, _, err := driver.parseImagePoolName(imageName)
+	if err != nil {
+		logrus.Debugf("Error at Remove Image - parseImagePoolName %s", imageName)
+		panic("Error at Remove image - parseImagePoolName")
+	}
+	backupName, err := generateImageBackupName(parsedName, nil)
+
+	// Delete backup image
+	driver.defaultRemoveAction = "delete"
+	removeBackupRequest := &volume.RemoveRequest{Name: pool + "/" + backupName}
+	err = driver.Remove(removeBackupRequest)
+	if err != nil {
+		logrus.Debugf("Error at Remove Image - %s", removeBackupRequest.Name)
+		panic("Error at Remove image")
+	}
+	logrus.Debugf("Image removed %s", removeBackupRequest.Name)
 }
