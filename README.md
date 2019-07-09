@@ -165,7 +165,7 @@ rbd ls default
 * DEFAULT\_IMAGE\_SIZE - default image size for newly created images. maybe overridden by opt
 * DEFAULT\_IMAGE\_FS - default image filesystem for newly created images. maybe overridden by opt
 * DEFAULT\_IMAGE\_FEATURES - default image features for newly created images. maybe overridden by opt
-* VOLUME\_REMOVE\_ACTION - 'ignore': does nothing on Ceph Cluster when a volume is deleted; 'delete': deletes the corresponding image from Ceph Cluster (irreversible!); 'rename' - renames the corresponding Ceph Image to zz_[image name]
+* VOLUME\_REMOVE\_ACTION - 'ignore': does nothing on Ceph Cluster when a volume is deleted; 'delete': deletes the corresponding image from Ceph Cluster (irreversible!); 'rename' - renames the corresponding Ceph Image to trash_[incremental counter]_[image name]
 * DEFAULT\_POOL\_NAME - default pool name when not specified in volume name
 * DEFAULT\_POOL\_CREATE - whatever during plugin initialization, it will look for the default pool and create it or not
 * DEFAULT\_POOL\_PG_NUM - number of PGs for the default pool when creating it
