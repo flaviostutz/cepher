@@ -168,7 +168,7 @@ func GetCmdOutput(cmd *cmd.Cmd) string {
 	return out
 }
 
-func GenerateImageBackupName(name string, nameList []string) (string, error) {
+func generateImageBackupName(name string, nameList []string) (string, error) {
 	backupPrefix := "trash"
 	count := 0
 	backupNamePattern, err := regexp.Compile(fmt.Sprintf("^%s_([0-9]{1,3})_%s$", backupPrefix, name))
