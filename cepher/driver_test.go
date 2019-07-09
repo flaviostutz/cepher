@@ -144,8 +144,8 @@ func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 
 	err = driver.Remove(&reqRemove)
 	if err != nil {
-		logrus.Debugf("Erro at Remove Image")
-		panic("Erro at Remove image")
+		logrus.Debugf("Error at Remove Image")
+		panic("Error at Remove image")
 	}
 	logrus.Debugf("Image removed %s", imageName)
 
