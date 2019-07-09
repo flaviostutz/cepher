@@ -11,7 +11,7 @@ services:
 
   mon1:
     image: flaviostutz/ceph-monitor:13.2.5
-    restart: always
+    restart: on-failure
     network_mode: host
     pid: host
     environment:
@@ -25,7 +25,7 @@ services:
     image: flaviostutz/ceph-manager:13.2.5
     pid: host
     network_mode: host
-    restart: always
+    restart: on-failure
     environment:
       - MONITOR_HOSTS=${HOST_IP}:6789
       - ETCD_URL=http://${HOST_IP}:12379
