@@ -92,7 +92,7 @@ func TestGenerateImageBackupName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GenerateImageBackupName(tt.args.name, tt.args.nameList)
+			got, err := generateImageBackupName(tt.args.name, tt.args.nameList)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateImageBackupName() error = %v, wantErr %v", err, tt.wantErr)
 				return
