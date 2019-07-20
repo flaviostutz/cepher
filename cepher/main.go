@@ -27,7 +27,7 @@ func main() {
 	defaultImageSizeMB := flag.Int("size", 3*1024, "RBD Image size to Create (in MB) (default: 3072=3GB)")
 	defaultImageFSType := flag.String("fs", "xfs", "FS type for the created RBD Image (must have mkfs.type)")
 	defaultImageFeatures := flag.String("features", "layering,stripping,exclusive-lock,object-map", "Initial RBD Image features for new images")
-	defaultRemoveAction := flag.String("remove-action", "rename", "Action to be performed when receiving a command to 'remove' a volume. Options are: 'ignore' (won't remove image from Ceph), 'delete' (will delete image from Ceph - irreversible!) or 'rename' (rename image prefixing it by 'zz_')")
+	defaultRemoveAction := flag.String("remove-action", "rename", "Action to be performed when receiving a command to 'remove' a volume. Options are: 'ignore' (won't remove image from Ceph), 'delete' (will delete image from Ceph - irreversible!) or 'rename' (renames the corresponding Ceph Image to trash_[incremental counter]_[image name])")
 	useRBDKernelModule := flag.Bool("kernel-module", false, "If true, will use the Linux Kernel RBD module for mapping Ceph Images to block devices, which has greater performance, but currently supports only features 'layering', 'striping' and 'exclusive-lock'. Else, use rbd-nbd Ceph library (apt-get install rbd-nbd) which supports all Ceph image features available")
 	lockEtcdServers := flag.String("lock-etcd", "", "ETCD server addresses used for distributed lock management. ex.: 192.168.1.1:2379,192.168.1.2:2379")
 	lockTimeoutMillis := flag.Uint64("lock-timeout", 10*1000, "If a host with a mounted device stops sending lock refreshs, it will be release to another host to mount the image after this time")
