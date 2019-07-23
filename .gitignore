@@ -1,1 +1,7 @@
 managed-plugin/rootfs
+
+# temp test files
+test/image-generate
+
+# JetBrains IDE files
+.idea
