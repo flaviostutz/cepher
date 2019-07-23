@@ -299,20 +299,32 @@ func (d cephRBDVolumeDriver) RemoveInternal(r *volume.RemoveRequest) error {
 
 		// defer d.unlockImage(pool, name, locker)
 	} else if d.defaultRemoveAction == "rename" {
-		logrus.Debugf("Renaming RBD Image %s/%s in Ceph Cluster to zz_ prefix", pool, name)
-		// TODO: maybe add a timestamp?
-		err = d.renameRBDImage(pool, name, "zz_"+name)
+		images, err := d.rbdPoolImageList(pool)
 		if err != nil {
-			errString := fmt.Sprintf("Unable to rename RBD Image %s/%s with zz_ prefix: %s", pool, name, err)
+			msg := fmt.Sprintf("error getting volume image list from pool %s: %s", pool, err)
+			logrus.Error(msg)
+			return errors.New(msg)
+		}
+		backupName, err := generateImageBackupName(name, images)
+		if err != nil {
+			msg := fmt.Sprintf("error generating image backup name to %s: %s", name, err)
+			logrus.Error(msg)
+			return errors.New(msg)
+		}
+
+		logrus.Debugf("Renaming RBD Image %s/%s in Ceph Cluster to %s/%s", pool, name, pool, backupName)
+		err = d.renameRBDImage(pool, name, backupName)
+		if err != nil {
+			errString := fmt.Sprintf("Unable to rename RBD Image %s/%s to %s/%s: %s", pool, name, pool, backupName, err)
 			logrus.Errorf(errString)
 			// unlock by old name
 			// defer d.unlockImage(pool, name, locker)
 			return errors.New(errString)
 		} else {
-			logrus.Infof("RBD Image %s/%s renamed successfully to %s/zz_%s", pool, name, pool, name)
+			logrus.Infof("RBD Image %s/%s renamed successfully to %s/%s", pool, name, pool, backupName)
 		}
 		// unlock by new name
-		// defer d.unlockImage(pool, "zz_"+name, locker)
+		// defer d.unlockImage(pool, backupName, locker)
 		// } else {
 		// ignore the remove call - but unlock ?
 		// defer d.unlockImage(pool, name, locker)
@@ -473,7 +485,7 @@ func (d cephRBDVolumeDriver) ListInternal() (*volume.ListResponse, error) {
 	logrus.Debugf("API ListInternal")
 
 	logrus.Debugf("Retrieving all images from default RBD Pool %s", d.defaultCephPool)
-	defaultImages, err := d.rbdList()
+	defaultImages, err := d.rbdDefaultPoolImageList()
 	if err != nil {
 		logrus.Errorf("Error getting images from RBD Pool %s: %s", d.defaultCephPool, err)
 		return nil, err
@@ -759,9 +771,14 @@ func (d cephRBDVolumeDriver) UnmountInternal(r *volume.UnmountRequest) error {
 // ***************************************************************************
 //
 
-// rbdList performs an `rbd ls` on the default pool
-func (d cephRBDVolumeDriver) rbdList() ([]string, error) {
-	result, err := d.rbdsh(d.defaultCephPool, "ls")
+// rbdDefaultPoolImageList performs an `rbd ls` on the default pool
+func (d cephRBDVolumeDriver) rbdDefaultPoolImageList() ([]string, error) {
+	return d.rbdPoolImageList(d.defaultCephPool)
+}
+
+// rbdPoolImageList performs an `rbd ls` on the pool
+func (d cephRBDVolumeDriver) rbdPoolImageList(pool string) ([]string, error) {
+	result, err := d.rbdsh(pool, "ls")
 	if err != nil {
 		return nil, err
 	}

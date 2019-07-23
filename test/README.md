@@ -25,7 +25,7 @@ HOST_IP=XXX.XXX.XXX.XXX docker-compose -f docker-compose.ceph.yml up -d
 3. Run the shell script *run-test.sh* with the command:
 
 ```
-bash run-test.sh
+HOST_IP=XXX.XXX.XXX.XXX bash run-test.sh
 ```
 
 This shell script will create a container with the an ceph-client and will execute:

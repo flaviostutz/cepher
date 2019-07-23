@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"os/user"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -87,8 +88,6 @@ func ShWithTimeout(howLong time.Duration, name string, args ...string) (string, 
 	case <-time.After(howLong):
 		return "", ShTimeoutError{timeout: howLong}
 	}
-
-	return "", nil
 }
 
 // grepLines pulls out lines that match a string (no regex ... yet)
@@ -167,4 +166,27 @@ func GetCmdOutput(cmd *cmd.Cmd) string {
 		}
 	}
 	return out
+}
+
+func generateImageBackupName(name string, nameList []string) (string, error) {
+	backupPrefix := "trash"
+	count := 0
+	backupNamePattern, err := regexp.Compile(fmt.Sprintf("^%s_([0-9]{1,3})_%s$", backupPrefix, name))
+	if err != nil {
+		return "", err
+	}
+	for _, imageName := range nameList {
+		submatch := backupNamePattern.FindStringSubmatch(imageName)
+		//Full match and group 1 are returned if matched
+		if len(submatch) == 2 {
+			backupNumber, err := strconv.Atoi(submatch[1])
+			if err != nil {
+				return "", err
+			}
+			if backupNumber >= count {
+				count = backupNumber + 1
+			}
+		}
+	}
+	return fmt.Sprintf("%s_%d_%s", backupPrefix, count, name), nil
 }
