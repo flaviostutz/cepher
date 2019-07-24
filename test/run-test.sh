@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 echo "Cleaning old files of previous build"
 rm ./image-generate/go.*
 rm ./image-generate/ceph.conf.template
