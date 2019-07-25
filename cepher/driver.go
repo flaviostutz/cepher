@@ -67,10 +67,12 @@ type cephRBDVolumeDriver struct {
 	rootMountDir         string
 	cephConfigFile       string
 	canCreateVolumes     bool
+	canCreatePools       bool
 	defaultImageSizeMB   int
 	defaultImageFSType   string
 	defaultImageFeatures string
 	defaultRemoveAction  string
+	defaultPoolPgNum     string
 	useRBDKernelModule   bool
 	lockEtcdServers      string
 	lockTimeoutMillis    uint64
@@ -196,14 +198,36 @@ func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 		imageFeatures = r.Options["features"]
 	}
 
+	// verify if pool exists
+	poolExists, err := poolExists(pool)
+	if err != nil {
+		err := fmt.Sprintf("error while checking if pool '%s' exists: %s", pool, err)
+		logrus.Error(err)
+		return errors.New(err)
+	}
+	if !poolExists {
+		if !d.canCreatePools {
+			err := fmt.Sprintf("the pool '%s' does not exists and the cepher is not allowed to auto create it: %s", pool, err)
+			logrus.Error(err)
+			return errors.New(err)
+		}
+		_, err := shWithDefaultTimeout("ceph", "osd", "pool", "create", pool, d.defaultPoolPgNum)
+		if err != nil {
+			err := fmt.Sprintf("error while creating pool '%s': %s", pool, err)
+			logrus.Error(err)
+			return errors.New(err)
+		}
+		logrus.Infof("pool '%s' created successfully", pool)
+	}
+
 	logrus.Debug("verify if image already exists on RBD cluster")
 	exists, err := d.rbdImageExists(pool, name)
 	if err != nil {
 		err := fmt.Sprintf("error while checking RBD Image %s/%s: %s", pool, name, err)
 		logrus.Errorf("%s", err)
 		return errors.New(err)
-
-	} else if !exists {
+	}
+	if !exists {
 		logrus.Debugf("Ceph Image doesn't exist yet")
 		if d.canCreateVolumes {
 			logrus.Debugf("create image on RBD Cluster")
@@ -784,6 +808,48 @@ func (d cephRBDVolumeDriver) rbdPoolImageList(pool string) ([]string, error) {
 	}
 	// split into lines - should be one rbd image name per line
 	return strings.Split(result, "\n"), nil
+}
+
+// listImagesFromAllPools list pools and its images
+// returns array with 'poolName/imageName' items
+func (d cephRBDVolumeDriver) listImagesFromAllPools() ([]string, error) {
+	poolList, err := poolList()
+	if err != nil {
+		return nil, err
+	}
+	var allImages []string
+	for _, pool := range poolList {
+		images, err := d.rbdPoolImageList(pool)
+		if err != nil {
+			return nil, err
+		}
+		for _, image := range images {
+			allImages = append(allImages, fmt.Sprintf("%s/%s", pool, image))
+		}
+	}
+	return allImages, nil
+}
+
+// poolList performs an `rbd ls` on the pool
+func poolList() ([]string, error) {
+	result, err := shWithDefaultTimeout("ceph", "osd", "pool", "ls")
+	if err != nil {
+		return nil, err
+	}
+	// split into lines - should be one pool name per line
+	return strings.Split(result, "\n"), nil
+}
+
+func poolExists(pool string) (bool, error) {
+	_, err := shWithDefaultTimeout("ceph", "osd", "pool", "get", pool, "size")
+	if err != nil {
+		// ENOENT = Error NO ENTry/ENTity
+		if strings.Contains(err.Error(), "ENOENT") {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // mountpoint returns the expected path on host

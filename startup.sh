@@ -17,7 +17,10 @@ if [ "$CEPH_CLUSTER_NAME" == "" ]; then
 fi 
 if [ "$ENABLE_AUTO_CREATE_VOLUMES" == "" ]; then
     export ENABLE_AUTO_CREATE_VOLUMES="false"
-fi 
+fi
+if [ "$ENABLE_AUTO_CREATE_POOLS" == "" ]; then
+    export ENABLE_AUTO_CREATE_POOLS="false"
+fi
 if [ "$DEFAULT_IMAGE_SIZE" == "" ]; then
     export DEFAULT_IMAGE_SIZE="100"
 fi 
@@ -58,6 +61,7 @@ echo "Starting CEPHER with MONITOR_HOSTS=$MONITOR_HOSTS \
     DEFAULT_POOL_NAME=$DEFAULT_POOL_NAME \
     MOUNT_PATH=$MOUNT_PATH \
     ENABLE_AUTO_CREATE_VOLUMES=$ENABLE_AUTO_CREATE_VOLUMES \
+    ENABLE_AUTO_CREATE_POOLS=$ENABLE_AUTO_CREATE_POOLS \
     DEFAULT_IMAGE_FS=$DEFAULT_IMAGE_FS \
     DEFAULT_IMAGE_SIZE=$DEFAULT_IMAGE_SIZE \
     ENABLE_WRITE_LOCK=$ENABLE_WRITE_LOCK \
@@ -94,8 +98,11 @@ cepher \
     --user=$CEPH_USER \
     --cluster=$CEPH_CLUSTER_NAME \
     --pool=$DEFAULT_POOL_NAME \
+    --poolPgNum=$DEFAULT_POOL_PG_NUM \
+    --poolQuotaMaxBytes=$DEFAULT_POOL_QUOTA_MAX_BYTES \
     --mount=$MOUNT_PATH \
     --create=$ENABLE_AUTO_CREATE_VOLUMES \
+    --create-pools=$ENABLE_AUTO_CREATE_POOLS \
     --fs=$DEFAULT_IMAGE_FS \
     --size=$DEFAULT_IMAGE_SIZE \
     --loglevel=$LOG_LEVEL \
