@@ -508,38 +508,33 @@ func (d cephRBDVolumeDriver) List() (*volume.ListResponse, error) {
 func (d cephRBDVolumeDriver) ListInternal() (*volume.ListResponse, error) {
 	logrus.Debugf("API ListInternal")
 
-	logrus.Debugf("Retrieving all images from default RBD Pool %s", d.defaultCephPool)
-	defaultImages, err := d.rbdDefaultPoolImageList()
+	logrus.Debugf("Retrieving all images from all RBD Pools")
+	defaultImages, err := d.listImagesFromAllPools()
 	if err != nil {
-		logrus.Errorf("Error getting images from RBD Pool %s: %s", d.defaultCephPool, err)
+		logrus.Errorf("Error getting RBD images: %s", err)
 		return nil, err
 	}
-
-	var vols []*volume.Volume
-
-	var vnames map[string]int
-	vnames = make(map[string]int)
 
 	logrus.Debugf("Retrieving currently mounted volumes")
 	volumes, err := d.currentVolumes()
 	if err != nil {
 		logrus.Errorf("Error retrieving currently mounted volumes: %s", err)
 		return nil, err
-
-	} else {
-		for k, v := range volumes {
-			var vname = fmt.Sprintf("%s/%s", v.Pool, v.Name)
-			vnames[vname] = 1
-			apiVol := &volume.Volume{Name: vname, Mountpoint: k}
-			vols = append(vols, apiVol)
-		}
 	}
 
+	var vols []*volume.Volume
+	var vnames = make(map[string]int)
+
+	for k, v := range volumes {
+		var vname = fmt.Sprintf("%s/%s", v.Pool, v.Name)
+		vnames[vname] = 1
+		apiVol := &volume.Volume{Name: vname, Mountpoint: k}
+		vols = append(vols, apiVol)
+	}
 	for _, v := range defaultImages {
-		var vname = fmt.Sprintf("%s/%s", d.defaultCephPool, v)
-		_, ok := vnames[vname]
+		_, ok := vnames[v]
 		if !ok {
-			apiVol := &volume.Volume{Name: vname}
+			apiVol := &volume.Volume{Name: v}
 			vols = append(vols, apiVol)
 		}
 	}
@@ -805,6 +800,9 @@ func (d cephRBDVolumeDriver) rbdPoolImageList(pool string) ([]string, error) {
 	result, err := d.rbdsh(pool, "ls")
 	if err != nil {
 		return nil, err
+	}
+	if result == "" {
+		return nil, nil
 	}
 	// split into lines - should be one rbd image name per line
 	return strings.Split(result, "\n"), nil
