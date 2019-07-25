@@ -38,19 +38,11 @@ func TestListCommand(t *testing.T) {
 	lockEtcdServers := flag.String("lock-etcd", lockEtcdAddress, "ETCD server addresses used for distributed lock management. ex.: 192.168.1.1:2379,192.168.1.2:2379")
 	lockTimeoutMillis := flag.Uint64("lock-timeout", 10*1000, "If a host with a mounted device stops sending lock refreshs, it will be release to another host to mount the image after this time")
 
-	switch *logLevel {
-	case "debug":
-		logrus.SetLevel(logrus.DebugLevel)
-		break
-	case "warning":
-		logrus.SetLevel(logrus.WarnLevel)
-		break
-	case "error":
-		logrus.SetLevel(logrus.ErrorLevel)
-		break
-	default:
-		logrus.SetLevel(logrus.InfoLevel)
+	level, e := logrus.ParseLevel(*logLevel)
+	if e != nil {
+		level = logrus.DebugLevel
 	}
+	logrus.SetLevel(level)
 
 	driver := cephRBDVolumeDriver{
 		cephCluster:          *cephCluster,
