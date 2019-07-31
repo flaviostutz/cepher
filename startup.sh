@@ -99,7 +99,6 @@ cepher \
     --cluster=$CEPH_CLUSTER_NAME \
     --pool=$DEFAULT_POOL_NAME \
     --poolPgNum=$DEFAULT_POOL_PG_NUM \
-    --poolQuotaMaxBytes=$DEFAULT_POOL_QUOTA_MAX_BYTES \
     --mount=$MOUNT_PATH \
     --create=$ENABLE_AUTO_CREATE_VOLUMES \
     --create-pools=$ENABLE_AUTO_CREATE_POOLS \
