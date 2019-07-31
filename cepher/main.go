@@ -36,19 +36,13 @@ func main() {
 	flag.Parse()
 
 	logrus.Infof("useRBDKernelModule=%v", *useRBDKernelModule)
-	switch *logLevel {
-	case "debug":
-		logrus.SetLevel(logrus.DebugLevel)
-		break
-	case "warning":
-		logrus.SetLevel(logrus.WarnLevel)
-		break
-	case "error":
-		logrus.SetLevel(logrus.ErrorLevel)
-		break
-	default:
-		logrus.SetLevel(logrus.InfoLevel)
+
+	level, e := logrus.ParseLevel(*logLevel)
+	if e != nil {
+		logrus.Errorf("error parsing log level, setting log level to 'info'. error: %s", e.Error())
+		level = logrus.InfoLevel
 	}
+	logrus.SetLevel(level)
 
 	if *versionFlag {
 		logrus.Infof("%s\n", VERSION)
