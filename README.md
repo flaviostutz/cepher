@@ -158,11 +158,11 @@ rbd ls default
 Name | Required | Description | Default value
 --- | --- | --- | ---
 MONITOR\_HOSTS | yes | A comma separated list of `monitor-ip:port` | 
-CEPH\_KEYRING\_BASE64 | if ETCD\_URL not defined | base64 encoded keyring to be used to connect to Ceph Cluster |
-ETCD\_URL | if CEPH\_KEYRING\_BASE64 not defined | if defined, the plugin will search for a base64 encoded keyring at `/[cluster-name]/keyring`
+ETCD\_URL | no | if defined, the plugin will search for a base64 encoded keyring at `/[cluster-name]/keyring` |
+CEPH\_KEYRING\_BASE64 | no | base64 encoded keyring to be used to connect to Ceph Cluster, if not defined, the plugin will search for a base64 encoded keyring at `/[cluster-name]/keyring` on ETC_URL |
 CEPH\_AUTH | no | `none` or `cephx` | `cephx`
 CEPH\_USER | no | user name to use to connect to Ceph | `admin`
-CEPH\_CLUSTER\_NAME | no | Ceph cluster name
+CEPH\_CLUSTER\_NAME | no | Ceph cluster name | `ceph`
 ENABLE\_AUTO\_CREATE\_VOLUMES | no | whatever this plugin will create new images on Ceph cluster if the corresponding image is not found | `false`
 ENABLE\_AUTO\_CREATE\_POOLS | no | create new pool on Ceph cluster if the corresponding pool is not found | `false`
 DEFAULT\_IMAGE\_SIZE | no | default image size for newly created images. maybe overridden by opt | `100`
