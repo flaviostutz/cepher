@@ -155,23 +155,26 @@ rbd ls default
 
 ## ENV configurations
 
-* MONITOR\_HOSTS - comma separated list of [monitor-ip:port]
-* CEPH\_KEYRING\_BASE64 - base64 encoded keyring to be used to connect to Ceph Cluster
-* ETCD\_URL - if defined, the plugin will search for a base64 encoded keyring at /[cluster-name]/keyring
-* CEPH\_AUTH - 'none' or 'cephx'
-* CEPH\_USER - user name to use to connect to Ceph
-* CEPH\_CLUSTER\_NAME - Ceph cluster name
-* ENABLE\_AUTO\_CREATE\_VOLUMES - whatever this plugin will create new images on Ceph cluster if the corresponding image is not found
-* DEFAULT\_IMAGE\_SIZE - default image size for newly created images. maybe overridden by opt
-* DEFAULT\_IMAGE\_FS - default image filesystem for newly created images. maybe overridden by opt
-* DEFAULT\_IMAGE\_FEATURES - default image features for newly created images. maybe overridden by opt
-* VOLUME\_REMOVE\_ACTION - 'ignore': does nothing on Ceph Cluster when a volume is deleted; 'delete': deletes the corresponding image from Ceph Cluster (irreversible!); 'rename' - renames the corresponding Ceph Image to trash_[incremental counter]_[image name]
-* DEFAULT\_POOL\_NAME - default pool name when not specified in volume name
-* DEFAULT\_POOL\_CREATE - whatever during plugin initialization, it will look for the default pool and create it or not
-* DEFAULT\_POOL\_PG_NUM - number of PGs for the default pool when creating it
-* DEFAULT\_POOL\_QUOTA_MAX_BYTES - max bytes size for the default pool during creation
-* USE_RBD\_KERNEL\_MODULE - if true, will use the Linux RBD Kernel Module that has greater performance, but doesn't support recent image features. if false, will use official Ceph rbd-nbd tool for mapping the images that supports all recent image features. false is default
-* LOG\_LEVEL - debug, info, warning or error
+Name | Required | Description | Default value
+--- | --- | --- | ---
+MONITOR\_HOSTS | yes | A comma separated list of `monitor-ip:port` | 
+CEPH\_KEYRING\_BASE64 | if ETCD\_URL not defined | base64 encoded keyring to be used to connect to Ceph Cluster |
+ETCD\_URL | if CEPH\_KEYRING\_BASE64 not defined | if defined, the plugin will search for a base64 encoded keyring at `/[cluster-name]/keyring`
+CEPH\_AUTH | no | `none` or `cephx` | `cephx`
+CEPH\_USER | no | user name to use to connect to Ceph | `admin`
+CEPH\_CLUSTER\_NAME | no | Ceph cluster name
+ENABLE\_AUTO\_CREATE\_VOLUMES | no | whatever this plugin will create new images on Ceph cluster if the corresponding image is not found | `false`
+ENABLE\_AUTO\_CREATE\_POOLS | no | create new pool on Ceph cluster if the corresponding pool is not found | `false`
+DEFAULT\_IMAGE\_SIZE | no | default image size for newly created images. maybe overridden by opt | `100`
+DEFAULT\_IMAGE\_FS | no | default image filesystem for newly created images. maybe overridden by opt | `xfs`
+DEFAULT\_IMAGE\_FEATURES | no | default image features for newly created images. maybe overridden by opt | `layering,striping,exclusive-lock,object-map,fast-diff,journaling`
+VOLUME\_REMOVE\_ACTION | no | `ignore`: does nothing on Ceph Cluster when a volume is deleted; `delete`: deletes the corresponding image from Ceph Cluster (irreversible!); `rename` - renames the corresponding Ceph Image to `trash_[incremental counter]_[imagename]` | `rename`
+DEFAULT\_POOL\_NAME | no | default pool name when not specified in volume name | `volumes`
+DEFAULT\_POOL\_CREATE | no | whatever during plugin initialization, it will look for the default pool and create it or not |
+DEFAULT\_POOL\_PG_NUM | no | number of PGs for the default pool when creating it |
+DEFAULT\_POOL\_QUOTA_MAX_BYTES | no | max bytes size for the default pool during creation |
+USE_RBD\_KERNEL\_MODULE | no | if true, will use the Linux RBD Kernel Module that has greater performance, but doesn't support recent image features. if false, will use official Ceph `rbd-nbd` tool for mapping the images that supports all recent image features. | `false`
+LOG\_LEVEL | no | debug, info, warning or error | `info`
 
 ## Driver opt configurations
 
