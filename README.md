@@ -170,8 +170,8 @@ DEFAULT\_IMAGE\_FS | no | default image filesystem for newly created images. may
 DEFAULT\_IMAGE\_FEATURES | no | default image features for newly created images. maybe overridden by opt | `layering,striping,exclusive-lock,object-map,fast-diff,journaling`
 VOLUME\_REMOVE\_ACTION | no | `ignore`: does nothing on Ceph Cluster when a volume is deleted; `delete`: deletes the corresponding image from Ceph Cluster (irreversible!); `rename` - renames the corresponding Ceph Image to `trash_[incremental counter]_[imagename]` | `rename`
 DEFAULT\_POOL\_NAME | no | default pool name when not specified in volume name | `volumes`
-DEFAULT\_POOL\_CREATE | no | whatever during plugin initialization, it will look for the default pool and create it or not |
-DEFAULT\_POOL\_PG_NUM | no | number of PGs for the default pool when creating it |
+DEFAULT\_POOL\_CREATE | no | whatever during plugin initialization, it will look for the default pool and create it or not | `true`
+DEFAULT\_POOL\_PG_NUM | no | number of PGs for the default pool when creating it | `100`
 DEFAULT\_POOL\_QUOTA_MAX_BYTES | no | max bytes size for the default pool during creation |
 USE_RBD\_KERNEL\_MODULE | no | if true, will use the Linux RBD Kernel Module that has greater performance, but doesn't support recent image features. if false, will use official Ceph `rbd-nbd` tool for mapping the images that supports all recent image features. | `false`
 LOG\_LEVEL | no | debug, info, warning or error | `info`
