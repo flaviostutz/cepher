@@ -21,7 +21,7 @@ Modern Linux Kernel comes with a Ceph module for mapping images as virtual devic
 
 docker-compose.yml
 
-```
+```yaml
   etcd0:
     image: quay.io/coreos/etcd:v3.2.25
     network_mode: host
@@ -94,7 +94,7 @@ docker-compose.yml
 
 * Run Cepher plugin
 
-```
+```shell script
 docker plugin install flaviostutz/cepher \
   --grant-all-permissions \
   --alias=cepher \
@@ -107,7 +107,7 @@ docker plugin install flaviostutz/cepher \
 
 * Test it!
 
-```
+```shell script
 docker run -it --rm --volume-driver=cepher --name first --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "echo -n 'Hello ' >> /mnt/foo/hello"
 
 docker run -it --rm --volume-driver=cepher --name second --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "cat /mnt/foo/hello"
@@ -118,7 +118,7 @@ docker run -it --rm --volume-driver=cepher --name second --volume volumes/myimag
 
 * There is a default "volumes" pool that this image prepares for you, but if you wish to create a customized pool, follow these steps
 
-```
+```shell script
   # connect to a container that can be used as a Ceph Client
   docker-compose exec mgr1 bash
 
@@ -137,7 +137,7 @@ docker run -it --rm --volume-driver=cepher --name second --volume volumes/myimag
 
 * Run your container with a persisted volume in Ceph
 
-```
+```shell script
 # run a container that will make the first usage of the image, so it will be
 # created on Ceph during volume creation
 # after echoing to a file in the newly created volume, this container will exit 
@@ -229,7 +229,7 @@ LOG\_LEVEL | no | debug, info, warning or error | `info`
    * You can execute those exact steps for adding new storage even after the cluster is in use
 
 * On Machine 8:
-```
+```shell script
 docker plugin install flaviostutz/cepher \
   --grant-all-permissions \
   --alias=cepher \
@@ -242,14 +242,14 @@ docker plugin install flaviostutz/cepher \
 * Validation
 
   * On Machine 1 (MON1)
-```
+```shell script
 docker-compose exec mgr1 bash
 ceph -s
 #check for status
 ```
 
   * On Machine 8 (DOCKER)
-```
+```shell script
 docker run -it --rm --volume-driver=cepher --name first --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "echo -n 'Hello ' >> /mnt/foo/hello"
 
 docker run -it --rm --volume-driver=cepher --name second --volume volumes/myimage:/mnt/foo ubuntu /bin/bash -c "cat /mnt/foo/hello"
