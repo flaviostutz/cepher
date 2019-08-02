@@ -206,18 +206,10 @@ func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 		return errors.New(err)
 	}
 	if !poolExists {
-		if !d.canCreatePools {
-			err := fmt.Sprintf("the pool '%s' does not exists and the cepher is not allowed to auto create it: %s", pool, err)
-			logrus.Error(err)
-			return errors.New(err)
-		}
-		_, err := shWithDefaultTimeout("ceph", "osd", "pool", "create", pool, d.defaultPoolPgNum)
+		err := d.createPool(pool)
 		if err != nil {
-			err := fmt.Sprintf("error while creating pool '%s': %s", pool, err)
-			logrus.Error(err)
-			return errors.New(err)
+			return err
 		}
-		logrus.Infof("pool '%s' created successfully", pool)
 	}
 
 	logrus.Debug("verify if image already exists on RBD cluster")
@@ -826,6 +818,32 @@ func (d cephRBDVolumeDriver) listImagesFromAllPools() ([]string, error) {
 		}
 	}
 	return allImages, nil
+}
+
+// create ceph osd pool
+// initialize created pool
+func (d cephRBDVolumeDriver) createPool(pool string) error {
+	if !d.canCreatePools {
+		err := fmt.Sprintf("the pool '%s' does not exists and the cepher is not allowed to auto create it", pool)
+		logrus.Error(err)
+		return errors.New(err)
+	}
+	logrus.Infof("creating pool '%s'", pool)
+	_, err := shWithDefaultTimeout("ceph", "osd", "pool", "create", pool, d.defaultPoolPgNum)
+	if err != nil {
+		err := fmt.Sprintf("error while creating pool '%s': %s", pool, err)
+		logrus.Error(err)
+		return errors.New(err)
+	}
+	logrus.Infof("initializing pool '%s'", pool)
+	_, err = d.rbdsh(pool, "pool", "init", pool)
+	if err != nil {
+		err := fmt.Sprintf("error while initializing pool '%s': %s", pool, err)
+		logrus.Error(err)
+		return errors.New(err)
+	}
+	logrus.Infof("pool '%s' created successfully", pool)
+	return nil
 }
 
 // poolList performs an `rbd ls` on the pool
