@@ -526,7 +526,7 @@ func (d cephRBDVolumeDriver) lockMountVolume(pool, name string, readonly bool, c
 			}
 			logrus.Infof("got RLock for %s", name)
 		} else {
-			if err := mutex.RLock(ctx); err != nil {
+			if err := mutex.RWLock(ctx); err != nil {
 				return err
 			}
 			logrus.Infof("got RWLock for %s", name)
