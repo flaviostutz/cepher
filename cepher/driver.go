@@ -517,16 +517,22 @@ func (d cephRBDVolumeDriver) unlockCreateVolume(mutex *etcdlock.RWMutex) error {
 
 func (d cephRBDVolumeDriver) lockMountVolume(pool, name string, readonly bool, callerID string) error {
 	if d.etcdLockSession != nil {
+		if callerID == "" {
+			return errors.New(fmt.Sprintf("error getting mount lock for volume %s/%s. callerID cannot be an empty string.", pool, name))
+		}
+
 		volumeName := fmt.Sprintf("%s/%s", pool, name)
 		mutex := etcdlock.NewRWMutex(d.etcdLockSession, fmt.Sprintf("/cepher-mount/%s", volumeName))
 		ctx, _ := context.WithTimeout(context.Background(), time.Duration(d.lockTimeoutMillis)*time.Millisecond)
 		if readonly {
 			if err := mutex.RLock(ctx); err != nil {
+				logrus.Debugf("error getting mount read lock for volume %s and caller ID %s", volumeName, callerID)
 				return err
 			}
 			logrus.Infof("got RLock for mount %s", name)
 		} else {
 			if err := mutex.RWLock(ctx); err != nil {
+				logrus.Debugf("error getting mount write lock for volume %s and caller ID %s: %s", volumeName, callerID, err.Error())
 				return err
 			}
 			logrus.Infof("got RWLock for mount %s", name)
@@ -545,6 +551,10 @@ func (d cephRBDVolumeDriver) lockMountVolume(pool, name string, readonly bool, c
 
 func (d cephRBDVolumeDriver) unlockMountVolume(pool, name string, callerID string) error {
 	if d.etcdLockSession != nil {
+		if callerID == "" {
+			return errors.New(fmt.Sprintf("error releasing mount lock for volume %s/%s. callerID cannot be an empty string.", pool, name))
+		}
+
 		volumeName := fmt.Sprintf("%s/%s", pool, name)
 		mutexes, found := d.volumeMountLocks[volumeName]
 		if !found {
