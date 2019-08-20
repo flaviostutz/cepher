@@ -508,7 +508,7 @@ func (d cephRBDVolumeDriver) lockCreateVolume(pool, name string) (*etcdlock.RWMu
 func (d cephRBDVolumeDriver) unlockCreateVolume(mutex *etcdlock.RWMutex) error {
 	if d.etcdLockSession != nil {
 		if err := mutex.Unlock(); err != nil {
-			return nil
+			return err
 		}
 		logrus.Infof("released RWLock for create volume")
 	}
@@ -524,12 +524,12 @@ func (d cephRBDVolumeDriver) lockMountVolume(pool, name string, readonly bool, c
 			if err := mutex.RLock(ctx); err != nil {
 				return err
 			}
-			logrus.Infof("got RLock for %s", name)
+			logrus.Infof("got RLock for mount %s", name)
 		} else {
 			if err := mutex.RWLock(ctx); err != nil {
 				return err
 			}
-			logrus.Infof("got RWLock for %s", name)
+			logrus.Infof("got RWLock for mount %s", name)
 		}
 		//keep reference with callerID to unlock on unmount volume
 		if mutexes, found := d.volumeMountLocks[volumeName]; found {
