@@ -80,6 +80,8 @@ func TestListCommand(t *testing.T) {
 	logrus.Debug(*response)
 
 	//Start 6 cycles of Create/Mount/Unmount/Remove Images from Ceph
+	wg.Add(6)
+	logrus.Info("starting 6 parallel cycles of Create/Mount/Unmount/Remove Images from Ceph and waiting until all are finished")
 	go DoCompleteTask("volumes/test-1", driver)
 	go DoCompleteTask("volumes/test-2", driver)
 	go DoCompleteTask("volumes/test-3", driver)
@@ -95,7 +97,6 @@ func TestListCommand(t *testing.T) {
 }
 
 func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
-	wg.Add(1)
 	defer wg.Done()
 	logrus.Debugf("Starting %s", imageName)
 
