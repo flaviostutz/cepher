@@ -78,7 +78,7 @@ type cephRBDVolumeDriver struct {
 	lockTimeoutMillis    uint64
 	m                    *sync.Mutex
 	etcdLockSession      *concurrency.Session
-	deviceLocks          map[string]*etcdlock.RWMutex
+	volumeMountLocks     map[string]map[string]*etcdlock.RWMutex
 }
 
 func (d *cephRBDVolumeDriver) init() error {
@@ -102,7 +102,7 @@ func (d *cephRBDVolumeDriver) init() error {
 			return err
 		}
 		logrus.Debugf("ETCD lock session ok %v", d.etcdLockSession)
-		d.deviceLocks = make(map[string]*etcdlock.RWMutex)
+		d.volumeMountLocks = make(map[string]map[string]*etcdlock.RWMutex)
 	}
 
 	logrus.Debugf("Driver initialized")
@@ -152,19 +152,15 @@ func (d cephRBDVolumeDriver) Capabilities() *volume.CapabilitiesResponse {
 //    Respond with a string error if an error occurred.
 //
 func (d cephRBDVolumeDriver) Create(r *volume.CreateRequest) error {
-	logrus.Infof("")
-	logrus.Infof(">>> DOCKER API CREATE(%q)", r)
 	d.m.Lock()
 	defer d.m.Unlock()
+	logrus.Infof("")
+	logrus.Infof(">>> DOCKER API CREATE(%q)", r)
 	return d.CreateInternal(r)
 }
 
 func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 	logrus.Debugf("CreateInternal(%q)", r)
-
-	fstype := d.defaultImageFSType
-	imageFeatures := d.defaultImageFeatures
-
 	// parse image name optional/default pieces
 	pool, name, _, err := d.parseImagePoolName(r.Name)
 	if err != nil {
@@ -172,6 +168,20 @@ func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 		logrus.Errorf("%s", err)
 		return errors.New(err)
 	}
+
+	mutex, err := d.lockCreateVolume(pool, name)
+	if err != nil {
+		logrus.Errorf("error locking volume %s for create: %s", r.Name, err.Error())
+		return err
+	}
+	defer func() {
+		if err := d.unlockCreateVolume(mutex); err != nil {
+			logrus.Errorf("error unlocking volume %s for create: %s", r.Name, err.Error())
+		}
+	}()
+
+	fstype := d.defaultImageFSType
+	imageFeatures := d.defaultImageFeatures
 
 	// Options to override from `docker volume create -o OPT=VAL ...`
 	if r.Options["pool"] != "" {
@@ -261,10 +271,10 @@ func (d cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 //    Respond with a string error if an error occurred.
 //
 func (d cephRBDVolumeDriver) Remove(r *volume.RemoveRequest) error {
-	logrus.Infof("")
-	logrus.Infof(">>> DOCKER API REMOVE(%q)", r)
 	d.m.Lock()
 	defer d.m.Unlock()
+	logrus.Infof("")
+	logrus.Infof(">>> DOCKER API REMOVE(%q)", r)
 	return d.RemoveInternal(r)
 }
 
@@ -370,111 +380,203 @@ func (d cephRBDVolumeDriver) RemoveInternal(r *volume.RemoveRequest) error {
 //
 // TODO: utilize the new MountRequest.ID field to track volumes
 func (d cephRBDVolumeDriver) Mount(r *volume.MountRequest) (*volume.MountResponse, error) {
-	logrus.Infof("")
-	logrus.Infof(">>> DOCKER API MOUNT(%q)", r)
 	d.m.Lock()
 	defer d.m.Unlock()
+	logrus.Infof("")
+	logrus.Infof(">>> DOCKER API MOUNT(%q)", r)
 	return d.MountInternal(r)
 }
 
-func (d cephRBDVolumeDriver) MountInternal(r *volume.MountRequest) (*volume.MountResponse, error) {
+func (d cephRBDVolumeDriver) MountInternal(r *volume.MountRequest) (mr *volume.MountResponse, err error) {
 	logrus.Debugf("API MountInternal(%s)", r)
 
 	// parse full image name for optional/default pieces
 	pool, name, opts, err := d.parseImagePoolName(r.Name)
-	readonly := (opts == "ro")
+	readonly := opts == "ro"
 	if err != nil {
 		err := fmt.Sprintf("error parsing volume name: %s", err)
 		logrus.Errorf("%s", err)
 		return nil, errors.New(err)
 	}
-	mountpath := d.mountpoint(pool, name, readonly)
+
+	// try to get lock for the volume
+	if err := d.lockMountVolume(pool, name, readonly, r.ID); err != nil {
+		return nil, err
+	}
+	defer func() { //Use named return values to perform unlock if error occurred
+		if err != nil {
+			err = d.unlockMountVolume(pool, name, r.ID)
+		}
+	}()
 
 	volumes, err := d.currentVolumes()
 	if err != nil {
 		logrus.Errorf("Error retrieving currently mounted volumes: %s", err)
 		return nil, err
-	} else {
-		_, found := volumes[mountpath]
-		//volume already mounted
-		if found {
-			// err := fmt.Sprintf("")
-			// logrus.Errorf("%s", err)
-			// return nil, errors.New(err)
-			logrus.Infof("Mountpoint %s already exists. Reusing it. pool=%s image=%s", mountpath, pool, name)
+	}
+	mountpath := d.mountpoint(pool, name, readonly)
+	if _, found := volumes[mountpath]; found { //volume already mounted
+		// err := fmt.Sprintf("")
+		// logrus.Errorf("%s", err)
+		// return nil, errors.New(err)
+		logrus.Infof("Mountpoint %s already exists. Reusing it. pool=%s image=%s", mountpath, pool, name)
+	} else { //volume not mounted yet. mount!
+		logrus.Infof("Mountpoint %s doesn't exist yet. Creating it. pool=%s image=%s", mountpath, pool, name)
 
-			//volume not mounted yet. mount!
-		} else {
-			logrus.Infof("Mountpoint %s doesn't exist yet. Creating it. pool=%s image=%s", mountpath, pool, name)
-
-			// map
-			logrus.Debugf("mapping kernel device to RBD Image")
-			logrus.Debugf("name=%v, readonly=%v", r.Name, readonly)
-			device, err := d.mapImage(pool, name, readonly)
-			if err != nil {
-				logrus.Errorf("error mapping RBD Image %s/%s to kernel device: %s", pool, name, err)
-				// failsafe: need to release lock
-				// defer d.unlockImage(pool, name, locker)
-				return nil, errors.New(fmt.Sprintf("Unable to map kernel device. err=%s", err))
-			}
-
-			// determine device FS type
-			fstype, err := d.deviceType(device)
-			if err != nil {
-				// logrus.Warnf("unable to detect RBD Image %s/%s fstype: %s", name, err)
-				logrus.Warnf("unable to detect RBD Image %s fstype: %s", name, err)
-				// NOTE: don't fail - FOR NOW we will assume default plugin fstype
-				fstype = d.defaultImageFSType
-			}
-
-			// double check image filesystem if possible
-			err = d.checkDeviceFilesystem(device, mountpath, fstype, readonly)
-			if err != nil {
-				logrus.Errorf("Filesystem at RBD Image %s/%s may need repairs: %s", pool, name, err)
-				// failsafe: need to release lock and unmap kernel device
-				logrus.Debugf("unmapping device")
-				defer d.unmapImageDevice(device)
-				// defer d.unlockImage(pool, name, locker)
-				return nil, errors.New(fmt.Sprintf("Image filesystem has errors. Mount it in a separate machine and perform manual repairs. err=%s", err))
-			}
-
-			// check for mountdir - create if necessary
-			err = os.MkdirAll(mountpath, os.ModeDir|os.FileMode(int(0775)))
-			if err != nil {
-				logrus.Errorf("error creating mount directory %s: %s", mountpath, err)
-				// failsafe: need to release lock and unmap kernel device
-				logrus.Debugf("unmapping device")
-				defer d.unmapImageDevice(device)
-				// defer d.unlockImage(pool, name, locker)
-				return nil, errors.New(fmt.Sprintf("Unable to create mountdir %s", mountpath))
-			}
-
-			// mount
-			logrus.Debugf("Mounting RBD Image %s/%s, mapped to device %s, to mountdir %s", pool, name, device, mountpath)
-			err = d.mountDeviceToPath(fstype, device, mountpath, readonly)
-			if err != nil {
-				logrus.Errorf("error mounting device %s to directory %s: %s", device, mountpath, err)
-				logrus.Debugf("unmapping device")
-				defer d.unmapImageDevice(device)
-				// defer d.unlockImage(pool, name, locker)
-				return nil, errors.New(fmt.Sprintf("Unable to mount device. err=%s", err))
-			} else {
-				logrus.Infof("Mount to %s successful", mountpath)
-			}
-
+		// map
+		logrus.Debugf("mapping kernel device to RBD Image name=%v, readonly=%v", r.Name, readonly)
+		device, err := d.mapImageToDevice(pool, name, readonly)
+		if err != nil {
+			logrus.Errorf("error mapping RBD Image %s/%s to kernel device: %s", pool, name, err)
+			// failsafe: need to release lock
+			// defer d.unlockImage(pool, name, locker)
+			return nil, errors.New(fmt.Sprintf("Unable to map kernel device. err=%s", err))
 		}
 
-		// // attempt to lock
-		// locker, err := d.lockImage(pool, name)
-		// if err != nil {
-		// 	logrus.Errorf("locking RBD Image(%s): %s", name, err)
-		// 	return nil, errors.New("Unable to get Exclusive Lock")
-		// }
+		// determine device FS type
+		fstype, err := d.deviceType(device)
+		if err != nil {
+			// logrus.Warnf("unable to detect RBD Image %s/%s fstype: %s", name, err)
+			logrus.Warnf("unable to detect RBD Image %s fstype: %s", name, err)
+			// NOTE: don't fail - FOR NOW we will assume default plugin fstype
+			fstype = d.defaultImageFSType
+		}
 
-		// map and mount the RBD image -- these are OS level commands, not avail in go-ceph
+		// double check image filesystem if possible
+		err = d.checkDeviceFilesystem(device, mountpath, fstype, readonly)
+		if err != nil {
+			logrus.Errorf("Filesystem at RBD Image %s/%s may need repairs: %s", pool, name, err)
+			// failsafe: need to release lock and unmap kernel device
+			logrus.Debugf("unmapping device")
+			defer d.unmapImageDevice(device)
+			// defer d.unlockImage(pool, name, locker)
+			return nil, errors.New(fmt.Sprintf("Image filesystem has errors. Mount it in a separate machine and perform manual repairs. err=%s", err))
+		}
 
-		return &volume.MountResponse{Mountpoint: mountpath}, nil
+		// check for mountdir - create if necessary
+		err = os.MkdirAll(mountpath, os.ModeDir|os.FileMode(int(0775)))
+		if err != nil {
+			logrus.Errorf("error creating mount directory %s: %s", mountpath, err)
+			// failsafe: need to release lock and unmap kernel device
+			logrus.Debugf("unmapping device")
+			defer d.unmapImageDevice(device)
+			// defer d.unlockImage(pool, name, locker)
+			return nil, errors.New(fmt.Sprintf("Unable to create mountdir %s", mountpath))
+		}
+
+		// mount
+		logrus.Debugf("Mounting RBD Image %s/%s, mapped to device %s, to mountdir %s", pool, name, device, mountpath)
+		err = d.mountDeviceToPath(fstype, device, mountpath, readonly)
+		if err != nil {
+			logrus.Errorf("error mounting device %s to directory %s: %s", device, mountpath, err)
+			logrus.Debugf("unmapping device")
+			defer d.unmapImageDevice(device)
+			// defer d.unlockImage(pool, name, locker)
+			return nil, errors.New(fmt.Sprintf("Unable to mount device. err=%s", err))
+		} else {
+			logrus.Infof("Mount to %s successful", mountpath)
+		}
+
 	}
+
+	// // attempt to lock
+	// locker, err := d.lockImage(pool, name)
+	// if err != nil {
+	// 	logrus.Errorf("locking RBD Image(%s): %s", name, err)
+	// 	return nil, errors.New("Unable to get Exclusive Lock")
+	// }
+
+	// map and mount the RBD image -- these are OS level commands, not avail in go-ceph
+
+	return &volume.MountResponse{Mountpoint: mountpath}, nil
+}
+
+func (d cephRBDVolumeDriver) lockCreateVolume(pool, name string) (*etcdlock.RWMutex, error) {
+	if d.etcdLockSession != nil {
+		volumeName := fmt.Sprintf("%s/%s", pool, name)
+		mutex := etcdlock.NewRWMutex(d.etcdLockSession, fmt.Sprintf("/cepher-create/%s", volumeName))
+		ctx, _ := context.WithTimeout(context.Background(), time.Duration(d.lockTimeoutMillis)*time.Millisecond)
+		if err := mutex.RWLock(ctx); err != nil { // using RWLock to allow only one lock at a time
+			return nil, err
+		}
+		logrus.Infof("got RWLock for create volume %s", name)
+		return mutex, nil
+	}
+	return nil, nil
+}
+
+func (d cephRBDVolumeDriver) unlockCreateVolume(mutex *etcdlock.RWMutex) error {
+	if d.etcdLockSession != nil {
+		if err := mutex.Unlock(); err != nil {
+			return nil
+		}
+		logrus.Infof("released RWLock for create volume")
+	}
+	return nil
+}
+
+func (d cephRBDVolumeDriver) lockMountVolume(pool, name string, readonly bool, callerID string) error {
+	if d.etcdLockSession != nil {
+		volumeName := fmt.Sprintf("%s/%s", pool, name)
+		mutex := etcdlock.NewRWMutex(d.etcdLockSession, fmt.Sprintf("/cepher-mount/%s", volumeName))
+		ctx, _ := context.WithTimeout(context.Background(), time.Duration(d.lockTimeoutMillis)*time.Millisecond)
+		if readonly {
+			if err := mutex.RLock(ctx); err != nil {
+				return err
+			}
+			logrus.Infof("got RLock for %s", name)
+		} else {
+			if err := mutex.RLock(ctx); err != nil {
+				return err
+			}
+			logrus.Infof("got RWLock for %s", name)
+		}
+		//keep reference with callerID to unlock on unmount volume
+		if mutexes, found := d.volumeMountLocks[volumeName]; found {
+			mutexes[callerID] = mutex
+		} else {
+			mutexes := make(map[string]*etcdlock.RWMutex)
+			mutexes[callerID] = mutex
+			d.volumeMountLocks[volumeName] = mutexes
+		}
+	}
+	return nil
+}
+
+func (d cephRBDVolumeDriver) unlockMountVolume(pool, name string, callerID string) error {
+	if d.etcdLockSession != nil {
+		volumeName := fmt.Sprintf("%s/%s", pool, name)
+		mutexes, found := d.volumeMountLocks[volumeName]
+		if !found {
+			return errors.New(fmt.Sprintf("cannot find locks for volume %s and caller ID %s", volumeName, callerID))
+		}
+
+		if mutex, found := mutexes[callerID]; found {
+			logrus.Debugf("unlocking volume %s for caller ID %s", volumeName, callerID)
+			if err := mutex.Unlock(); err != nil {
+				logrus.Errorf("error unlocking volume %s for caller ID %s: %s", volumeName, callerID, err.Error())
+				return err
+			}
+			delete(mutexes, callerID)
+			if len(mutexes) == 0 {
+				delete(d.volumeMountLocks, volumeName)
+			}
+			logrus.Debugf("unlocked volume %s for caller ID %s", volumeName, callerID)
+		} else {
+			return errors.New(fmt.Sprintf("cannot find locks for volume %s and caller ID %s", volumeName, callerID))
+		}
+	}
+	return nil
+}
+
+func (d cephRBDVolumeDriver) mountLocksCount(pool, name string) int {
+	if d.etcdLockSession != nil {
+		volumeName := fmt.Sprintf("%s/%s", pool, name)
+		if mutexes, found := d.volumeMountLocks[volumeName]; found {
+			return len(mutexes)
+		}
+	}
+	return 0
 }
 
 // Get the list of volumes registered with the plugin.
@@ -547,10 +649,10 @@ func (d cephRBDVolumeDriver) ListInternal() (*volume.ListResponse, error) {
 //    { "Volume": { "Name": "volume_name", "Mountpoint": "/path/to/directory/on/host" }}
 //
 func (d cephRBDVolumeDriver) Get(r *volume.GetRequest) (*volume.GetResponse, error) {
-	logrus.Infof("")
-	logrus.Infof(">>> DOCKER API GET(%s", r)
 	d.m.Lock()
 	defer d.m.Unlock()
+	logrus.Infof("")
+	logrus.Infof(">>> DOCKER API GET(%s", r)
 	return d.GetInternal(r)
 }
 
@@ -595,7 +697,6 @@ func (d cephRBDVolumeDriver) GetInternal(r *volume.GetRequest) (*volume.GetRespo
 			volumeName = found.Name + "#" + opts
 		}
 		return &volume.GetResponse{Volume: &volume.Volume{Name: volumeName, Mountpoint: found.Mountpoint, CreatedAt: "2018-01-01T00:00:00-00:00"}}, nil
-
 	} else {
 		err := fmt.Sprintf("Volume not found for %s", r.Name)
 		logrus.Infof("%s", err)
@@ -638,14 +739,11 @@ func (d cephRBDVolumeDriver) PathInternal(r *volume.PathRequest) (*volume.PathRe
 
 	mountpath := d.mountpoint(pool, name, readonly)
 
-	volumes, err := d.currentVolumes()
-	if err != nil {
+	if volumes, err := d.currentVolumes(); err != nil {
 		logrus.Errorf("Error retrieving currently mounted volumes: %s", err)
 		return nil, err
-
 	} else {
-		_, ok := volumes[mountpath]
-		if ok {
+		if _, ok := volumes[mountpath]; ok {
 			logrus.Infof("Mountpath for volume %s/%s is %s", pool, name, mountpath)
 			return &volume.PathResponse{Mountpoint: mountpath}, nil
 		} else {
@@ -670,10 +768,10 @@ func (d cephRBDVolumeDriver) PathInternal(r *volume.PathRequest) (*volume.PathRe
 //    Respond with error or nil
 //
 func (d cephRBDVolumeDriver) Unmount(r *volume.UnmountRequest) error {
-	logrus.Infof("")
-	logrus.Infof(">>> DOCKER API UNMOUNT(%q)", r)
 	d.m.Lock()
 	defer d.m.Unlock()
+	logrus.Infof("")
+	logrus.Infof(">>> DOCKER API UNMOUNT(%q)", r)
 	return d.UnmountInternal(r)
 }
 
@@ -682,11 +780,21 @@ func (d cephRBDVolumeDriver) UnmountInternal(r *volume.UnmountRequest) error {
 
 	// parse full image name for optional/default pieces
 	pool, name, opts, err := d.parseImagePoolName(r.Name)
-	readonly := (opts == "ro")
+	readonly := opts == "ro"
 	if err != nil {
 		err := fmt.Sprintf("error parsing volume name: %s", err)
 		logrus.Errorf("%s", err)
 		return errors.New(err)
+	}
+
+	// release lock
+	if err := d.unlockMountVolume(pool, name, r.ID); err != nil {
+		return err
+	}
+	// continue to unmount only when there are no other locks for this mount
+	if locksCount := d.mountLocksCount(pool, name); locksCount != 0 {
+		logrus.Infof("skipping unmount... there are still %d locks for this mount")
+		return nil
 	}
 
 	mountpath := d.mountpoint(pool, name, readonly)
@@ -697,68 +805,63 @@ func (d cephRBDVolumeDriver) UnmountInternal(r *volume.UnmountRequest) error {
 		err := fmt.Sprintf("Error retrieving currently mounted volumes: %s", err)
 		logrus.Errorf("%s", err)
 		return errors.New(err)
-
-	} else {
-		vol, found := volumes[mountpath]
-		if !found {
-			err := fmt.Sprintf("Volume %s/%s mount not found at %s", pool, name, mountpath)
-			logrus.Errorf("%s", err)
-			return errors.New(err)
-
-		} else {
-			logrus.Debugf("Volume %s/%s mount found at %s device %s. ", pool, name, mountpath, vol.Device)
-		}
-
-		// unmount
-		// NOTE: this might succeed even if device is still in use inside container. device will dissappear from host side but still be usable inside container :(
-		logrus.Debugf("Unmounting %s from device %s", mountpath, vol.Device)
-		err = d.unmountPath(mountpath)
-		if err != nil {
-			err := fmt.Sprintf("Error unmounting device %s: %s", vol.Device, err)
-			logrus.Errorf("%s", err)
-			return errors.New(err)
-			// failsafe: will still attempt to unmap and unlock
-			// logrus.Debugf("will try to unmap even with the failure of unmount")
-		} else {
-			logrus.Debugf("Volume %s/%s unmounted from %s device %s successfully. ", pool, name, mountpath, vol.Device)
-		}
-
-		// unmap
-		logrus.Infof("Unmapping device %s from kernel for RBD Image %s/%s", vol.Device, pool, name)
-		err = d.unmapImageDevice(vol.Device)
-		if err != nil {
-			logrus.Errorf("error unmapping image device %s: %s", vol.Device, err)
-			// NOTE: rbd unmap exits 16 if device is still being used - unlike umount.  try to recover differently in that case
-			if rbdUnmapBusyRegexp.MatchString(err.Error()) {
-				// can't always re-mount and not sure if we should here ... will be cleaned up once original container goes away
-				err := fmt.Sprintf("unmap of device %s has failed due to 'busy device'", vol.Device)
-				logrus.Errorf("%s", err)
-				return errors.New(err)
-
-			} else {
-				err := fmt.Sprintf("unmap of device %s has failed: %s", vol.Device, err)
-				logrus.Errorf("%s", err)
-				return errors.New(err)
-			}
-			// other error, failsafe: proceed to attempt to unlock
-			// return fmt.Sprintf("Error unmapping kernel device %s. err=%s", vol.Device, err)
-		} else {
-			logrus.Debugf("Volume %s/%s unmapped from kernel device %s successfully. ", pool, name, vol.Device)
-		}
-
-		//TODO CHECK LATER
-		// // unlock
-		// err = d.unlockImage(vol.Pool, vol.Name, vol.Locker)
-		// if err != nil {
-		// 	logrus.Errorf("unlocking RBD image(%s): %s", vol.Name, err)
-		// 	err_msgs = append(err_msgs, "Error unlocking image")
-		// }
-
-		// logrus.Debugf("removing mount info from instance map")
-		// delete(d.volumes, mountpath)
-
-		return nil
 	}
+
+	vol, found := volumes[mountpath]
+	if !found {
+		err := fmt.Sprintf("Volume %s/%s mount not found at %s", pool, name, mountpath)
+		logrus.Errorf("%s", err)
+		return errors.New(err)
+	} else {
+		logrus.Debugf("Volume %s/%s mount found at %s device %s. ", pool, name, mountpath, vol.Device)
+	}
+
+	// unmount
+	// NOTE: this might succeed even if device is still in use inside container. device will disappear from host side but still be usable inside container :(
+	logrus.Debugf("dismounting %s from device %s", mountpath, vol.Device)
+	err = d.unmountPath(mountpath)
+	if err != nil {
+		err := fmt.Sprintf("Error dismounting device %s: %s", vol.Device, err)
+		logrus.Errorf("%s", err)
+		return errors.New(err)
+		// failsafe: will still attempt to unmap and unlock
+		// logrus.Debugf("will try to unmap even with the failure of unmount")
+	} else {
+		logrus.Debugf("Volume %s/%s unmounted from %s device %s successfully. ", pool, name, mountpath, vol.Device)
+	}
+
+	// unmap
+	logrus.Infof("Unmapping device %s from kernel for RBD Image %s/%s", vol.Device, pool, name)
+	if err := d.unmapImageDevice(vol.Device); err != nil {
+		logrus.Errorf("error unmapping image device %s: %s", vol.Device, err)
+		// NOTE: rbd unmap exits 16 if device is still being used - unlike unmount.  try to recover differently in that case
+		if rbdUnmapBusyRegexp.MatchString(err.Error()) {
+			// can't always re-mount and not sure if we should here ... will be cleaned up once original container goes away
+			err := fmt.Sprintf("unmap of device %s has failed due to 'busy device'", vol.Device)
+			logrus.Errorf("%s", err)
+			return errors.New(err)
+		} else {
+			err := fmt.Sprintf("unmap of device %s has failed: %s", vol.Device, err)
+			logrus.Errorf("%s", err)
+			return errors.New(err)
+		}
+		// other error, failsafe: proceed to attempt to unlock
+		// return fmt.Sprintf("Error unmapping kernel device %s. err=%s", vol.Device, err)
+	} else {
+		logrus.Debugf("Volume %s/%s unmapped from kernel device %s successfully. ", pool, name, vol.Device)
+	}
+
+	//TODO CHECK LATER
+	// // unlock
+	// err = d.unlockImage(vol.Pool, vol.Name, vol.Locker)
+	// if err != nil {
+	// 	logrus.Errorf("unlocking RBD image(%s): %s", vol.Name, err)
+	// 	err_msgs = append(err_msgs, "Error unlocking image")
+	// }
+
+	// logrus.Debugf("removing mount info from instance map")
+	// delete(d.volumes, mountpath)
+	return nil
 }
 
 // AUTHORIZATION DOCKER API
@@ -995,7 +1098,7 @@ func (d cephRBDVolumeDriver) createRBDImage(pool string, name string, size int, 
 	// }
 
 	logrus.Debugf("Mapping newly created image %s/%s to kernel device", pool, name)
-	device, err := d.mapImage(pool, name, false)
+	device, err := d.mapImageToDevice(pool, name, false)
 	if err != nil {
 		// defer d.unlockImage(pool, name, lockname)
 		err := fmt.Sprintf("error mapping kernel device: %s", err)
@@ -1147,60 +1250,6 @@ func (d cephRBDVolumeDriver) renameRBDImage(pool, name, newname string) error {
 	return nil
 }
 
-// mapImage will map the RBD Image to a kernel device
-func (d cephRBDVolumeDriver) mapImage(pool string, imagename string, readonly bool) (string, error) {
-
-	//acquire lock or fail if we can't get lock
-	var rwMutex *etcdlock.RWMutex
-	if d.etcdLockSession != nil {
-		logrus.Debugf("Getting RW Lock on ETCD for %s/%s. readonly=%v", pool, imagename, readonly)
-		rwMutex = etcdlock.NewRWMutex(d.etcdLockSession, "/cepher-locks/"+pool+"/"+imagename)
-		dl := time.Now().Add(time.Duration(d.lockTimeoutMillis) * time.Millisecond)
-		ctx, cancel := context.WithDeadline(context.Background(), dl)
-		if !readonly {
-			err := rwMutex.RWLock(ctx)
-			defer cancel()
-			if err != nil {
-				return "", errors.New("Couldn't not acquire write lock for " + pool + "/" + imagename + ". err=" + err.Error())
-			}
-			logrus.Infof("Got RWLock for %s/%s", pool, imagename)
-
-		} else {
-			err := rwMutex.RLock(ctx)
-			defer cancel()
-			if err != nil {
-				return "", errors.New("Couldn't not acquire read lock for " + pool + "/" + imagename + ". err=" + err.Error())
-			}
-			logrus.Infof("Got RLock for %s/%s", pool, imagename)
-		}
-	} else {
-		logrus.Debugf("Skipping ETCD RW Lock management")
-	}
-
-	//map ceph image to kernel device
-	device, err := d.mapImageToDevice(pool, imagename, readonly)
-	if err != nil {
-		if rwMutex != nil {
-			err := rwMutex.Unlock()
-			if err != nil {
-				return "", err
-			}
-		}
-		return "", err
-	}
-
-	//keep lock reference for unlock during unmap
-	if rwMutex != nil {
-		_, found := d.deviceLocks[device]
-		if found {
-			return "", errors.New("Lock inconsistency: Just mapped device " + device + " but a previous lock reference to it was found. Aborting")
-		}
-		d.deviceLocks[device] = rwMutex
-	}
-
-	return device, err
-}
-
 func (d cephRBDVolumeDriver) mapImageToDevice(pool string, imagename string, readonly bool) (string, error) {
 	//map image to kernel device
 	if d.useRBDKernelModule {
@@ -1230,39 +1279,17 @@ func (d cephRBDVolumeDriver) mapImageToDevice(pool string, imagename string, rea
 
 // unmapImageDevice will release the mapped kernel device
 func (d cephRBDVolumeDriver) unmapImageDevice(device string) error {
-
 	//unmap device from kernel
 	if d.useRBDKernelModule {
 		logrus.Debugf("Unmapping device %s using RBD Kernel module", device)
 		_, err := d.rbdsh("", "unmap", device)
-		if err != nil {
-			return err
-		}
+		return err
 	} else {
 		logrus.Debugf("Unmapping device %s using rbd-rbd client", device)
 		_, err := shWithDefaultTimeout("rbd-nbd", "--timeout", "60", "unmap", device)
 		// _, err := shWithDefaultTimeout("rbd-nbd", "unmap", device)
-		if err != nil {
-			return err
-		}
+		return err
 	}
-
-	//unlock image
-	if d.etcdLockSession != nil {
-		rwMutex, found := d.deviceLocks[device]
-		if !found {
-			return errors.New("Lock inconsistency: Cannot locate existing lock reference for device " + device + " during unmap for releasing the lock. Aborting")
-		}
-		err := rwMutex.Unlock()
-		if err != nil {
-			return err
-		}
-		delete(d.deviceLocks, device)
-		logrus.Debugf("Lock to %s was released", device)
-	}
-
-	return nil
-
 }
 
 // list mapped kernel devices
@@ -1504,9 +1531,7 @@ func (d cephRBDVolumeDriver) currentVolumes() (map[string]*Volume, error) {
 	logrus.Debugf("system mounts: %v", mounts)
 
 	//transform array to map
-	var deviceToMountPathMap map[string]string
-	deviceToMountPathMap = make(map[string]string)
-
+	deviceToMountPathMap := make(map[string]string)
 	volumes := make(map[string]*Volume)
 
 	for _, m := range mounts {

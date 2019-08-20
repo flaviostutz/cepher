@@ -65,7 +65,7 @@ func TestListCommand(t *testing.T) {
 	logrus.Debugf("Initializing driver instance")
 	err := driver.init()
 	logrus.Debugf("etcdLockSession=%v", driver.etcdLockSession)
-	logrus.Debugf("deviceLocks=%v", driver.deviceLocks)
+	logrus.Debugf("deviceLocks=%v", driver.volumeMountLocks)
 	if err != nil {
 		logrus.Errorf("error during driver initialization: %s", err)
 	}
