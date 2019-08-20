@@ -793,7 +793,7 @@ func (d cephRBDVolumeDriver) UnmountInternal(r *volume.UnmountRequest) error {
 	}
 	// continue to unmount only when there are no other locks for this mount
 	if locksCount := d.mountLocksCount(pool, name); locksCount != 0 {
-		logrus.Infof("skipping unmount... there are still %d locks for this mount")
+		logrus.Infof("skipping unmount... there are still %d locks for this mount", locksCount)
 		return nil
 	}
 
