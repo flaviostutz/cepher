@@ -112,14 +112,14 @@ func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 
 	err := driver.Create(&reqCreate)
 	if err != nil {
-		logrus.Debugf("Error at Create Image")
+		logrus.Debugf("Error at Create Image: %s", err.Error())
 		// panic("Error at Create Image")
 	}
 	logrus.Debugf("Image created %s", imageName)
 
 	response, err := driver.Mount(&reqMount)
 	if err != nil {
-		logrus.Debugf("Error at Mount Image")
+		logrus.Debugf("Error at Mount Image: %s", err.Error())
 		panic("Error at mount image")
 	}
 	logrus.Debugf("Image mounted Name: %s %s", imageName, response)
@@ -136,14 +136,14 @@ func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 
 	err = driver.Unmount(&reqUnmount)
 	if err != nil {
-		logrus.Debugf("Error at Unmount Image")
+		logrus.Debugf("Error at Unmount Image: %s", err.Error())
 		panic("Error at unmount image")
 	}
 	logrus.Debugf("Image unmounted %s", imageName)
 
 	err = driver.Remove(&reqRemove)
 	if err != nil {
-		logrus.Debugf("Error at Remove Image")
+		logrus.Debugf("Error at Remove Image: %s", err.Error())
 		panic("Error at Remove image")
 	}
 	logrus.Debugf("Image removed %s", imageName)
@@ -156,7 +156,7 @@ func RenameActionTest(imageName string, driver cephRBDVolumeDriver) {
 
 	err := driver.Create(&volume.CreateRequest{Name: imageName})
 	if err != nil {
-		logrus.Debugf("Error at Create Image")
+		logrus.Debugf("Error at Create Image: %s", err.Error())
 		panic("Error at Create Image")
 	}
 	logrus.Debugf("Image created %s", imageName)
@@ -165,7 +165,7 @@ func RenameActionTest(imageName string, driver cephRBDVolumeDriver) {
 	driver.defaultRemoveAction = "rename"
 	err = driver.Remove(&volume.RemoveRequest{Name: imageName})
 	if err != nil {
-		logrus.Debugf("Error at Remove Image")
+		logrus.Debugf("Error at Remove Image: %s", err.Error())
 		panic("Error at Remove image")
 	}
 	logrus.Debugf("Image removed %s", imageName)
@@ -173,7 +173,7 @@ func RenameActionTest(imageName string, driver cephRBDVolumeDriver) {
 	//retrieve backup image name to delete permanently
 	pool, parsedName, _, err := driver.parseImagePoolName(imageName)
 	if err != nil {
-		logrus.Debugf("Error at Remove Image - parseImagePoolName %s", imageName)
+		logrus.Debugf("Error at Remove Image - parseImagePoolName %s: %s", imageName, err.Error())
 		panic("Error at Remove image - parseImagePoolName")
 	}
 	backupName, err := generateImageBackupName(parsedName, nil)
@@ -183,7 +183,7 @@ func RenameActionTest(imageName string, driver cephRBDVolumeDriver) {
 	removeBackupRequest := &volume.RemoveRequest{Name: pool + "/" + backupName}
 	err = driver.Remove(removeBackupRequest)
 	if err != nil {
-		logrus.Debugf("Error at Remove Image - %s", removeBackupRequest.Name)
+		logrus.Debugf("Error at Remove Image - %s: %s", removeBackupRequest.Name, err.Error())
 		panic("Error at Remove image")
 	}
 	logrus.Debugf("Image removed %s", removeBackupRequest.Name)
@@ -192,7 +192,7 @@ func RenameActionTest(imageName string, driver cephRBDVolumeDriver) {
 func AutoCreatePoolsTest(imageName string, driver cephRBDVolumeDriver) {
 	pool, _, _, err := driver.parseImagePoolName(imageName)
 	if err != nil {
-		logrus.Debugf("Error at AutoCreatePoolsTest - parseImagePoolName %s", imageName)
+		logrus.Debugf("Error at AutoCreatePoolsTest - parseImagePoolName %s: %s", imageName, err.Error())
 		panic("Error at AutoCreatePoolsTest - parseImagePoolName")
 	}
 
@@ -221,7 +221,7 @@ func AutoCreatePoolsTest(imageName string, driver cephRBDVolumeDriver) {
 	err = driver.Create(&volume.CreateRequest{Name: imageName})
 	// mustn't return error when driver.canCreatePools is true and the pool doesn't exist
 	if err != nil {
-		logrus.Debugf("Error at Create Image for nonexistent pool. Mustn't return error when driver.canCreatePools is true.")
+		logrus.Debugf("Error at Create Image for nonexistent pool. Mustn't return error when driver.canCreatePools is true. %s", err.Error())
 		panic("Error at Create Image for nonexistent pool. Mustn't return error when driver.canCreatePools is true.")
 	}
 
@@ -243,7 +243,7 @@ func AutoCreatePoolsTest(imageName string, driver cephRBDVolumeDriver) {
 	// delete image
 	err = driver.Remove(&volume.RemoveRequest{Name: imageName})
 	if err != nil {
-		logrus.Debugf("Error at Remove Image")
+		logrus.Debugf("Error at Remove Image: %s", err.Error())
 		panic("Error at Remove image")
 	}
 	logrus.Debugf("Image removed %s", imageName)
