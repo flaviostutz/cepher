@@ -539,6 +539,9 @@ func (d cephRBDVolumeDriver) lockMountVolume(pool, name string, readonly bool, c
 		}
 		//keep reference with callerID to unlock on unmount volume
 		if mutexes, found := d.volumeMountLocks[volumeName]; found {
+			if _, found := mutexes[callerID]; found {
+				return errors.New(fmt.Sprintf("Lock inconsistency: Just locked volume %s and caller ID %s but a previous lock reference to it was found. Aborting", volumeName, callerID))
+			}
 			mutexes[callerID] = mutex
 		} else {
 			mutexes := make(map[string]*etcdlock.RWMutex)
