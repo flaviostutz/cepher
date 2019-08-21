@@ -84,12 +84,12 @@ func TestListCommand(t *testing.T) {
 	//Start 6 cycles of Create/Mount/Unmount/Remove Images from Ceph
 	wg.Add(6)
 	logrus.Info("starting 6 parallel cycles of Create/Mount/Unmount/Remove Images from Ceph and waiting until all are finished")
-	go DoCompleteTask("volumes/test-1", driver)
-	go DoCompleteTask("volumes/test-2", driver)
-	go DoCompleteTask("volumes/test-3", driver)
-	go DoCompleteTask("volumes/test-4", driver)
-	go DoCompleteTask("volumes/test-5", driver)
-	go DoCompleteTask("volumes/test-6", driver)
+	go DoCompleteRWVolumeTask("volumes/rw-1", driver)
+	go DoCompleteRWVolumeTask("volumes/rw-2", driver)
+	go DoCompleteRWVolumeTask("volumes/rw-3#rw", driver)
+	go DoCompleteRWVolumeTask("volumes/rw-4", driver)
+	go DoCompleteRWVolumeTask("volumes/rw-5#rw", driver)
+	go DoCompleteRWVolumeTask("volumes/rw-6", driver)
 	wg.Wait()
 
 	RenameActionTest("volumes/test-7", driver)
@@ -98,31 +98,31 @@ func TestListCommand(t *testing.T) {
 	logrus.Infof("==== Done! ====")
 }
 
-func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
+func DoCompleteRWVolumeTask(volumeName string, driver cephRBDVolumeDriver) {
 	defer wg.Done()
-	logrus.Debugf("Starting %s", imageName)
+	logrus.Debugf("Starting %s", volumeName)
 
 	callerID := uuid.New().String()
 
 	//# Create Requests to Call at the same format received from docker volumes interface
-	var reqCreate = volume.CreateRequest{Name: imageName}
-	var reqMount = volume.MountRequest{Name: imageName, ID: callerID}
-	var reqUnmount = volume.UnmountRequest{Name: imageName, ID: callerID}
-	var reqRemove = volume.RemoveRequest{Name: imageName}
+	var reqCreate = volume.CreateRequest{Name: volumeName}
+	var reqMount = volume.MountRequest{Name: volumeName, ID: callerID}
+	var reqUnmount = volume.UnmountRequest{Name: volumeName, ID: callerID}
+	var reqRemove = volume.RemoveRequest{Name: volumeName}
 
 	err := driver.Create(&reqCreate)
 	if err != nil {
 		logrus.Debugf("Error at Create Image: %s", err.Error())
 		// panic("Error at Create Image")
 	}
-	logrus.Debugf("Image created %s", imageName)
+	logrus.Debugf("Image created %s", volumeName)
 
 	response, err := driver.Mount(&reqMount)
 	if err != nil {
 		logrus.Debugf("Error at Mount Image: %s", err.Error())
 		panic("Error at mount image")
 	}
-	logrus.Debugf("Image mounted Name: %s %s", imageName, response)
+	logrus.Debugf("Image mounted Name: %s %s", volumeName, response)
 
 	logrus.Debugf("must get 'context deadline exceeded' lock error when try to mount a volume already mounted with the same caller ID")
 	if _, err := driver.Mount(&reqMount); err == nil {
@@ -136,7 +136,7 @@ func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 	}
 
 	logrus.Debugf("must get 'context deadline exceeded' lock error when try to mount a volume already mounted with different caller ID")
-	if _, err := driver.Mount(&volume.MountRequest{Name: imageName, ID: uuid.New().String()}); err == nil {
+	if _, err := driver.Mount(&volume.MountRequest{Name: volumeName, ID: uuid.New().String()}); err == nil {
 		logrus.Debugf("expect error but got nil")
 		panic("expect error but got nil")
 	} else {
@@ -156,16 +156,21 @@ func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 
 	time.Sleep(10 * time.Second)
 
-	unmountReqFail := &volume.UnmountRequest{Name: imageName, ID: uuid.New().String()}
-	logrus.Debugf("must get 'cannot find locks for volume %s and caller ID %s' lock error when try to unmount a volume with different caller ID", imageName, unmountReqFail.ID)
+	pool, image, _, err := driver.parseImagePoolName(volumeName)
+	if err != nil {
+		logrus.Debugf("Error at parseImagePoolName %s: %s", volumeName, err.Error())
+		panic("Error at parseImagePoolName")
+	}
+	unmountReqFail := &volume.UnmountRequest{Name: volumeName, ID: uuid.New().String()}
+	logrus.Debugf("must get 'cannot find locks for volume %s/%s and caller ID %s' lock error when try to unmount a volume with different caller ID", pool, image, unmountReqFail.ID)
 	if err := driver.Unmount(unmountReqFail); err == nil {
-		logrus.Debugf("expect error 'cannot find locks for volume %s and caller ID %s' but got nil", imageName, unmountReqFail.ID)
+		logrus.Debugf("expect error 'cannot find locks for volume %s/%s and caller ID %s' but got nil", pool, image, unmountReqFail.ID)
 		panic("expect error 'cannot find locks for volume %s and caller ID %s' but got nil")
 	} else {
-		if !strings.Contains(err.Error(), fmt.Sprintf("cannot find locks for volume %s and caller ID %s", imageName, unmountReqFail.ID)) {
+		if !strings.Contains(err.Error(), fmt.Sprintf("cannot find locks for volume %s/%s and caller ID %s", pool, image, unmountReqFail.ID)) {
 			panic(fmt.Sprintf("expect 'context deadline exceeded' lock error but got %s", err.Error()))
 		}
-		logrus.Debugf("unlocked error as expected")
+		logrus.Debugf("unmount lock error as expected")
 	}
 
 	err = driver.Unmount(&reqUnmount)
@@ -173,17 +178,17 @@ func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 		logrus.Debugf("Error at Unmount Image: %s", err.Error())
 		panic("Error at unmount image")
 	}
-	logrus.Debugf("Image unmounted %s", imageName)
-	logrus.Debugf("Volume Mount Locks after unmount %s with callerID %s: %v", imageName, reqMount.ID, driver.volumeMountLocks)
+	logrus.Debugf("Image unmounted %s", volumeName)
+	logrus.Debugf("Volume Mount Locks after unmount %s with callerID %s: %v", volumeName, reqMount.ID, driver.volumeMountLocks)
 
 	err = driver.Remove(&reqRemove)
 	if err != nil {
 		logrus.Debugf("Error at Remove Image: %s", err.Error())
 		panic("Error at Remove image")
 	}
-	logrus.Debugf("Image removed %s", imageName)
+	logrus.Debugf("Image removed %s", volumeName)
 
-	logrus.Debugf("Done with %s", imageName)
+	logrus.Debugf("Done with %s", volumeName)
 	return
 }
 
