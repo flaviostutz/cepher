@@ -86,9 +86,9 @@ func TestListCommand(t *testing.T) {
 	logrus.Info("starting 6 parallel cycles of Create/Mount/Unmount/Remove Images from Ceph and waiting until all are finished")
 	go DoCompleteRWVolumeTask("volumes/rw-1", driver)
 	go DoCompleteRWVolumeTask("volumes/rw-2", driver)
-	go DoCompleteRWVolumeTask("volumes/rw-3#rw", driver)
+	go DoCompleteRWVolumeTask("volumes/rw-3", driver)
 	go DoCompleteRWVolumeTask("volumes/rw-4", driver)
-	go DoCompleteRWVolumeTask("volumes/rw-5#rw", driver)
+	go DoCompleteRWVolumeTask("volumes/rw-5", driver)
 	go DoCompleteRWVolumeTask("volumes/rw-6", driver)
 	wg.Wait()
 
@@ -156,18 +156,13 @@ func DoCompleteRWVolumeTask(volumeName string, driver cephRBDVolumeDriver) {
 
 	time.Sleep(10 * time.Second)
 
-	pool, image, _, err := driver.parseImagePoolName(volumeName)
-	if err != nil {
-		logrus.Debugf("Error at parseImagePoolName %s: %s", volumeName, err.Error())
-		panic("Error at parseImagePoolName")
-	}
 	unmountReqFail := &volume.UnmountRequest{Name: volumeName, ID: uuid.New().String()}
-	logrus.Debugf("must get 'cannot find locks for volume %s/%s and caller ID %s' lock error when try to unmount a volume with different caller ID", pool, image, unmountReqFail.ID)
+	logrus.Debugf("must get 'cannot find locks for volume %s and caller ID %s' lock error when try to unmount a volume with different caller ID", volumeName, unmountReqFail.ID)
 	if err := driver.Unmount(unmountReqFail); err == nil {
-		logrus.Debugf("expect error 'cannot find locks for volume %s/%s and caller ID %s' but got nil", pool, image, unmountReqFail.ID)
+		logrus.Debugf("expect error 'cannot find locks for volume %s and caller ID %s' but got nil", volumeName, unmountReqFail.ID)
 		panic("expect error 'cannot find locks for volume %s and caller ID %s' but got nil")
 	} else {
-		if !strings.Contains(err.Error(), fmt.Sprintf("cannot find locks for volume %s/%s and caller ID %s", pool, image, unmountReqFail.ID)) {
+		if !strings.Contains(err.Error(), fmt.Sprintf("cannot find locks for volume %s and caller ID %s", volumeName, unmountReqFail.ID)) {
 			panic(fmt.Sprintf("expect 'context deadline exceeded' lock error but got %s", err.Error()))
 		}
 		logrus.Debugf("unmount lock error as expected")
