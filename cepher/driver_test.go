@@ -4,11 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/docker/go-plugins-helpers/volume"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -100,15 +102,13 @@ func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 	defer wg.Done()
 	logrus.Debugf("Starting %s", imageName)
 
+	callerID := uuid.New().String()
+
 	//# Create Requests to Call at the same format received from docker volumes interface
-	var reqCreate volume.CreateRequest
-	reqCreate.Name = imageName
-	var reqMount volume.MountRequest
-	reqMount.Name = imageName
-	var reqUnmount volume.UnmountRequest
-	reqUnmount.Name = imageName
-	var reqRemove volume.RemoveRequest
-	reqRemove.Name = imageName
+	var reqCreate = volume.CreateRequest{Name: imageName}
+	var reqMount = volume.MountRequest{Name: imageName, ID: callerID}
+	var reqUnmount = volume.UnmountRequest{Name: imageName, ID: callerID}
+	var reqRemove = volume.RemoveRequest{Name: imageName}
 
 	err := driver.Create(&reqCreate)
 	if err != nil {
@@ -124,6 +124,28 @@ func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 	}
 	logrus.Debugf("Image mounted Name: %s %s", imageName, response)
 
+	logrus.Debugf("must get 'context deadline exceeded' lock error when try to mount a volume already mounted with the same caller ID")
+	if _, err := driver.Mount(&reqMount); err == nil {
+		logrus.Debugf("expect error but got nil")
+		panic("expect error but got nil")
+	} else {
+		if !strings.Contains(err.Error(), "context deadline exceeded") {
+			panic(fmt.Sprintf("expect 'context deadline exceeded' lock error but got %s", err.Error()))
+		}
+		logrus.Debugf("got 'context deadline exceeded' lock error as expected")
+	}
+
+	logrus.Debugf("must get 'context deadline exceeded' lock error when try to mount a volume already mounted with different caller ID")
+	if _, err := driver.Mount(&volume.MountRequest{Name: imageName, ID: uuid.New().String()}); err == nil {
+		logrus.Debugf("expect error but got nil")
+		panic("expect error but got nil")
+	} else {
+		if !strings.Contains(err.Error(), "context deadline exceeded") {
+			panic(fmt.Sprintf("expect 'context deadline exceeded' lock error but got %s", err.Error()))
+		}
+		logrus.Debugf("got 'context deadline exceeded' lock error as expected")
+	}
+
 	time.Sleep(10 * time.Second)
 
 	logrus.Debugf("------- LIST MAPPED DEVICES ---------")
@@ -134,12 +156,25 @@ func DoCompleteTask(imageName string, driver cephRBDVolumeDriver) {
 
 	time.Sleep(10 * time.Second)
 
+	unmountReqFail := &volume.UnmountRequest{Name: imageName, ID: uuid.New().String()}
+	logrus.Debugf("must get 'cannot find locks for volume %s and caller ID %s' lock error when try to unmount a volume with different caller ID", imageName, unmountReqFail.ID)
+	if err := driver.Unmount(unmountReqFail); err == nil {
+		logrus.Debugf("expect error 'cannot find locks for volume %s and caller ID %s' but got nil", imageName, unmountReqFail.ID)
+		panic("expect error 'cannot find locks for volume %s and caller ID %s' but got nil")
+	} else {
+		if !strings.Contains(err.Error(), fmt.Sprintf("cannot find locks for volume %s and caller ID %s", imageName, unmountReqFail.ID)) {
+			panic(fmt.Sprintf("expect 'context deadline exceeded' lock error but got %s", err.Error()))
+		}
+		logrus.Debugf("unlocked error as expected")
+	}
+
 	err = driver.Unmount(&reqUnmount)
 	if err != nil {
 		logrus.Debugf("Error at Unmount Image: %s", err.Error())
 		panic("Error at unmount image")
 	}
 	logrus.Debugf("Image unmounted %s", imageName)
+	logrus.Debugf("Volume Mount Locks after unmount %s with callerID %s: %v", imageName, reqMount.ID, driver.volumeMountLocks)
 
 	err = driver.Remove(&reqRemove)
 	if err != nil {
