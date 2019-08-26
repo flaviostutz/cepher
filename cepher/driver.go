@@ -516,9 +516,10 @@ func (d *cephRBDVolumeDriver) lockCreateVolume(pool, name string) (*etcdlock.RWM
 		mutex := etcdlock.NewRWMutex(d.etcdLockSession, fmt.Sprintf("/cepher-create/%s", volumeName))
 		ctx, _ := context.WithTimeout(context.Background(), time.Duration(d.lockTimeoutMillis)*time.Millisecond)
 		if err := mutex.RWLock(ctx); err != nil { // using RWLock to allow only one lock at a time
+			logrus.Debugf("error getting write lock for create volume %s lease ID %x: %s", volumeName, d.etcdLockSession.Lease(), err.Error())
 			return nil, err
 		}
-		logrus.Infof("got RWLock for create volume %s", name)
+		logrus.Debugf("got RWLock for create volume %s", name)
 		return mutex, nil
 	}
 	return nil, nil
@@ -527,9 +528,10 @@ func (d *cephRBDVolumeDriver) lockCreateVolume(pool, name string) (*etcdlock.RWM
 func (d *cephRBDVolumeDriver) unlockCreateVolume(mutex *etcdlock.RWMutex) error {
 	if d.etcdLockSession != nil {
 		if err := mutex.Unlock(); err != nil {
+			logrus.Errorf("error unlocking create volume with etcd lease ID %x: %s", d.etcdLockSession.Lease(), err.Error())
 			return err
 		}
-		logrus.Infof("released RWLock for create volume")
+		logrus.Debugf("released RWLock for create volume")
 	}
 	return nil
 }
@@ -545,16 +547,16 @@ func (d *cephRBDVolumeDriver) lockMountVolume(pool, name string, readonly bool, 
 		ctx, _ := context.WithTimeout(context.Background(), time.Duration(d.lockTimeoutMillis)*time.Millisecond)
 		if readonly {
 			if err := mutex.RLock(ctx); err != nil {
-				logrus.Debugf("error getting mount read lock for volume %s and caller ID %s", volumeName, callerID)
+				logrus.Debugf("error getting mount read lock for volume %s caller ID %s lease ID %x: %s", volumeName, callerID, d.etcdLockSession.Lease(), err.Error())
 				return err
 			}
-			logrus.Infof("got RLock for mount %s", name)
+			logrus.Debugf("got RLock for mount %s", name)
 		} else {
 			if err := mutex.RWLock(ctx); err != nil {
-				logrus.Debugf("error getting mount write lock for volume %s and caller ID %s: %s", volumeName, callerID, err.Error())
+				logrus.Debugf("error getting mount write lock for volume %s caller ID %s lease ID %: %s", volumeName, callerID, d.etcdLockSession.Lease(), err.Error())
 				return err
 			}
-			logrus.Infof("got RWLock for mount %s", name)
+			logrus.Debugf("got RWLock for mount %s", name)
 		}
 		//keep reference with callerID to unlock on unmount volume
 		if mutexes, found := d.volumeMountLocks[volumeName]; found {
@@ -586,7 +588,7 @@ func (d *cephRBDVolumeDriver) unlockMountVolume(pool, name string, callerID stri
 		if mutex, found := mutexes[callerID]; found {
 			logrus.Debugf("unlocking volume %s for caller ID %s", volumeName, callerID)
 			if err := mutex.Unlock(); err != nil {
-				logrus.Errorf("error unlocking volume %s for caller ID %s: %s", volumeName, callerID, err.Error())
+				logrus.Errorf("error unlocking volume %s caller ID %s lease ID %x: %s", volumeName, callerID, d.etcdLockSession.Lease(), err.Error())
 				return err
 			}
 			delete(mutexes, callerID)
@@ -850,10 +852,10 @@ func (d *cephRBDVolumeDriver) UnmountInternal(r *volume.UnmountRequest) error {
 
 	// unmount
 	// NOTE: this might succeed even if device is still in use inside container. device will disappear from host side but still be usable inside container :(
-	logrus.Debugf("dismounting %s from device %s", mountpath, vol.Device)
+	logrus.Debugf("unmounting %s from device %s", mountpath, vol.Device)
 	err = d.unmountPath(mountpath)
 	if err != nil {
-		err := fmt.Sprintf("Error dismounting device %s: %s", vol.Device, err)
+		err := fmt.Sprintf("Error unmounting device %s: %s", vol.Device, err)
 		logrus.Errorf("%s", err)
 		return errors.New(err)
 		// failsafe: will still attempt to unmap and unlock
