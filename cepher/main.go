@@ -56,7 +56,7 @@ func main() {
 
 	logrus.Infof("====Starting Cepher plugin version %s====", VERSION)
 
-	driver := cephRBDVolumeDriver{
+	driver := &cephRBDVolumeDriver{
 		cephCluster:          *cephCluster,
 		cephUser:             *cephUser,
 		defaultCephPool:      *defaultCephPool,
