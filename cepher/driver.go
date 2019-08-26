@@ -103,6 +103,25 @@ func (d *cephRBDVolumeDriver) init() error {
 		}
 		logrus.Debugf("ETCD lock session ok %v", d.etcdLockSession)
 		d.volumeMountLocks = make(map[string]map[string]*etcdlock.RWMutex)
+
+		// starts routine to recover session when lease is orphaned, expires, or is otherwise no longer being refreshed.
+		go func() {
+			for {
+				<-d.etcdLockSession.Done()
+				logrus.Errorf("ETCD session channel was closed")
+				d.volumeMountLocks = make(map[string]map[string]*etcdlock.RWMutex)
+				for {
+					time.Sleep(time.Second * 10)
+					logrus.Debugf("recreating ETCD session")
+					if d.etcdLockSession, err = concurrency.NewSession(cli, concurrency.WithTTL(int(d.lockTimeoutMillis/1000))); err != nil {
+						logrus.Debugf("error recreating ETCD session: %s", err.Error())
+						continue
+					}
+					logrus.Debugf("ETCD session recreated %v", d.etcdLockSession)
+					break
+				}
+			}
+		}()
 	}
 
 	logrus.Debugf("Driver initialized")
