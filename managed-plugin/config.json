@@ -41,6 +41,11 @@
                 "value"
             ]
         }, {
+            "name": "ENABLE_AUTO_CREATE_POOLS",
+            "settable": [
+                "value"
+            ]
+        }, {
             "name": "DEFAULT_IMAGE_SIZE",
             "settable": [
                 "value"

@@ -1,8 +1,5 @@
 FROM golang:1.12.4-stretch AS BUILD
 
-RUN apt-get update
-RUN apt-get install -y librados-dev librbd-dev rbd-nbd
-
 RUN go get -v github.com/Soulou/curl-unix-socket
 
 RUN mkdir /cepher

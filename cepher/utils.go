@@ -114,10 +114,10 @@ func grepLines(data string, like string) []string {
 
 //ExecShellTimeout execute shell command with timeout
 func ExecShellTimeout(timeout time.Duration, command string, args ...string) (string, error) {
-	logrus.Debugf("shell command: %s", command)
 	if len(args) > 0 {
 		command = command + " " + strings.Join(args, " ")
 	}
+	logrus.Debugf("shell command: %s", command)
 	acmd := cmd.NewCmd("bash", "-c", command)
 	statusChan := acmd.Start() // non-blocking
 	running := true
