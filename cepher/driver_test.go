@@ -286,7 +286,7 @@ func RenameActionTest(imageName string, driver cephRBDVolumeDriver) {
 	logrus.Debugf("Image removed %s", imageName)
 
 	//retrieve backup image name to delete permanently
-	pool, parsedName, _, err := driver.parseImagePoolName(imageName)
+	pool, parsedName, _, _, err := driver.parseImagePoolName(imageName)
 	if err != nil {
 		logrus.Debugf("Error at Remove Image - parseImagePoolName %s: %s", imageName, err.Error())
 		panic("Error at Remove image - parseImagePoolName")
@@ -305,7 +305,7 @@ func RenameActionTest(imageName string, driver cephRBDVolumeDriver) {
 }
 
 func AutoCreatePoolsTest(imageName string, driver cephRBDVolumeDriver) {
-	pool, _, _, err := driver.parseImagePoolName(imageName)
+	pool, _, _, _, err := driver.parseImagePoolName(imageName)
 	if err != nil {
 		logrus.Debugf("Error at AutoCreatePoolsTest - parseImagePoolName %s: %s", imageName, err.Error())
 		panic("Error at AutoCreatePoolsTest - parseImagePoolName")
