@@ -686,7 +686,7 @@ func (d *cephRBDVolumeDriver) Get(r *volume.GetRequest) (*volume.GetResponse, er
 	d.m.Lock()
 	defer d.m.Unlock()
 	logrus.Infof("")
-	logrus.Infof(">>> DOCKER API GET(%s", r)
+	logrus.Infof(">>> DOCKER API GET(%s)", r)
 	return d.GetInternal(r)
 }
 
@@ -756,7 +756,7 @@ func (d *cephRBDVolumeDriver) GetInternal(r *volume.GetRequest) (*volume.GetResp
 //
 func (d *cephRBDVolumeDriver) Path(r *volume.PathRequest) (*volume.PathResponse, error) {
 	logrus.Infof("")
-	logrus.Infof(">>> DOCKER API PATH(%s", r)
+	logrus.Infof(">>> DOCKER API PATH(%s)", r)
 	return d.PathInternal(r)
 }
 
