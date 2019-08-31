@@ -723,8 +723,16 @@ func (d *cephRBDVolumeDriver) GetInternal(r *volume.GetRequest) (*volume.GetResp
 		return nil, errors.New(err)
 	}
 	logrus.Infof("Image found for volume %s/%s", pool, name)
+
+	createdAt, err := info.CreatedAt()
+	if err != nil {
+		err := fmt.Sprintf("couldn't get info for %s/%s: %s", pool, name, err.Error())
+		logrus.Error(err)
+		return nil, errors.New(err)
+	}
+
 	//TODO verify if got error always retuning a mountpoint or It must returns mountpoint only for mounted volumes
-	return &volume.GetResponse{Volume: &volume.Volume{Name: r.Name, Mountpoint: d.mountpoint(pool, name, readonly), CreatedAt: info.CreateTimestamp}}, nil
+	return &volume.GetResponse{Volume: &volume.Volume{Name: r.Name, Mountpoint: d.mountpoint(pool, name, readonly), CreatedAt: createdAt}}, nil
 }
 
 // Path returns the path to host directory mountpoint for volume.
@@ -1072,6 +1080,7 @@ func (d *cephRBDVolumeDriver) rbdImageExists(pool, findName string) (bool, error
 	return true, nil
 }
 
+// rbdImageInfo retrieve image information like size, creation date, format and etc...
 func (d *cephRBDVolumeDriver) rbdImageInfo(pool, findName string) (*imageInfo, error) {
 	resp, err := d.rbdsh(pool, "info", findName, "--format", "json")
 	if err != nil {
@@ -1593,4 +1602,12 @@ func (d *cephRBDVolumeDriver) currentVolumes() (map[string]*Volume, error) {
 	}
 
 	return volumes, nil
+}
+
+func (i *imageInfo) CreatedAt() (string, error) {
+	parse, err := time.Parse("Mon Jan 2 15:04:05 2006", i.CreateTimestamp)
+	if err != nil {
+		return "", errors.New(fmt.Sprintf("error parsing creation timestamp %s from image %s using pattern '%s'", i.CreateTimestamp, i.Name, "Mon Jan 2 15:04:05 2006"))
+	}
+	return parse.Format("2006-01-02T15:04:05Z07:00"), nil
 }
