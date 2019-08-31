@@ -1604,6 +1604,7 @@ func (d *cephRBDVolumeDriver) currentVolumes() (map[string]*Volume, error) {
 	return volumes, nil
 }
 
+// CreatedAt format image CreateTimestamp to plugin time layout
 func (i *imageInfo) CreatedAt() (string, error) {
 	parse, err := time.Parse("Mon Jan 2 15:04:05 2006", i.CreateTimestamp)
 	if err != nil {
