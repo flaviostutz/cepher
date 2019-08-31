@@ -568,7 +568,7 @@ func (d *cephRBDVolumeDriver) lockMountVolume(pool, name string, readonly bool, 
 			logrus.Debugf("got RLock for mount %s", name)
 		} else {
 			if err := mutex.RWLock(ctx); err != nil {
-				logrus.Debugf("error getting mount write lock for volume %s caller ID %s lease ID %: %s", volumeName, callerID, d.etcdLockSession.Lease(), err.Error())
+				logrus.Debugf("error getting mount write lock for volume %s caller ID %s lease ID %x: %s", volumeName, callerID, d.etcdLockSession.Lease(), err.Error())
 				return err
 			}
 			logrus.Debugf("got RWLock for mount %s", name)
