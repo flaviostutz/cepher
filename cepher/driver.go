@@ -731,8 +731,13 @@ func (d *cephRBDVolumeDriver) GetInternal(r *volume.GetRequest) (*volume.GetResp
 		return nil, errors.New(err)
 	}
 
-	//TODO verify if got error always retuning a mountpoint or It must returns mountpoint only for mounted volumes
-	return &volume.GetResponse{Volume: &volume.Volume{Name: r.Name, Mountpoint: d.mountpoint(pool, name, readonly), CreatedAt: createdAt}}, nil
+	// only provide mountPoint for volumes that are actually mounted
+	var mountPoint string
+	if d.mountLocksCount(pool, name) > 0 {
+		mountPoint = d.mountpoint(pool, name, readonly)
+	}
+
+	return &volume.GetResponse{Volume: &volume.Volume{Name: r.Name, Mountpoint: mountPoint, CreatedAt: createdAt}}, nil
 }
 
 // Path returns the path to host directory mountpoint for volume.
