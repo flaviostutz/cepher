@@ -28,6 +28,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -49,6 +50,7 @@ import (
 var (
 	rbdUnmapBusyRegexp         = regexp.MustCompile(`^exit status 16$`)
 	spaceDelimitedFieldsRegexp = regexp.MustCompile(`([^\s]+)`)
+	imageNameRegexp            = regexp.MustCompile(`^(([-_.[:alnum:]]+)/)?([-_.[:alnum:]]+)(#(ro))?$`)
 )
 
 // Volume is our local struct to store info about RBD Image
@@ -57,6 +59,20 @@ type Volume struct {
 	Name      string // RBD Image name
 	Device    string // local host kernel device (e.g. /dev/rbd1)
 	Mountpath string
+}
+
+type imageInfo struct {
+	Name            string   `json:"name"`
+	Size            uint64   `json:"size"`
+	Objects         uint64   `json:"objects"`
+	ObjectSize      uint64   `json:"object_size"`
+	Order           int      `json:"order"`
+	BlockNamePrefix string   `json:"block_name_prefix"`
+	Format          uint64   `json:"format"`
+	Features        []string `json:"features"`
+	Flags           []string `json:"flags"`
+	CreateTimestamp string   `json:"create_timestamp"`
+	Journal         string   `json:"journal"`
 }
 
 // our driver type for impl func
@@ -181,7 +197,7 @@ func (d *cephRBDVolumeDriver) Create(r *volume.CreateRequest) error {
 func (d *cephRBDVolumeDriver) CreateInternal(r *volume.CreateRequest) error {
 	logrus.Debugf("CreateInternal(%q)", r)
 	// parse image name optional/default pieces
-	pool, name, _, err := d.parseImagePoolName(r.Name)
+	pool, name, _, _, err := d.parseImagePoolName(r.Name)
 	if err != nil {
 		err := fmt.Sprintf("error parsing volume name: %s", err)
 		logrus.Errorf("%s", err)
@@ -301,7 +317,7 @@ func (d *cephRBDVolumeDriver) RemoveInternal(r *volume.RemoveRequest) error {
 	logrus.Debugf("API RemoveInternal(%s)", r)
 
 	// parse full image name for optional/default pieces
-	pool, name, _, err := d.parseImagePoolName(r.Name)
+	pool, name, _, _, err := d.parseImagePoolName(r.Name)
 	if err != nil {
 		err := fmt.Sprintf("error parsing volume name: %s", err)
 		logrus.Errorf("%s", err)
@@ -410,8 +426,7 @@ func (d *cephRBDVolumeDriver) MountInternal(r *volume.MountRequest) (mr *volume.
 	logrus.Debugf("API MountInternal(%s)", r)
 
 	// parse full image name for optional/default pieces
-	pool, name, opts, err := d.parseImagePoolName(r.Name)
-	readonly := opts == "ro"
+	pool, name, _, readonly, err := d.parseImagePoolName(r.Name)
 	if err != nil {
 		err := fmt.Sprintf("error parsing volume name: %s", err)
 		logrus.Errorf("%s", err)
@@ -553,7 +568,7 @@ func (d *cephRBDVolumeDriver) lockMountVolume(pool, name string, readonly bool, 
 			logrus.Debugf("got RLock for mount %s", name)
 		} else {
 			if err := mutex.RWLock(ctx); err != nil {
-				logrus.Debugf("error getting mount write lock for volume %s caller ID %s lease ID %: %s", volumeName, callerID, d.etcdLockSession.Lease(), err.Error())
+				logrus.Debugf("error getting mount write lock for volume %s caller ID %s lease ID %x: %s", volumeName, callerID, d.etcdLockSession.Lease(), err.Error())
 				return err
 			}
 			logrus.Debugf("got RWLock for mount %s", name)
@@ -686,7 +701,7 @@ func (d *cephRBDVolumeDriver) Get(r *volume.GetRequest) (*volume.GetResponse, er
 	d.m.Lock()
 	defer d.m.Unlock()
 	logrus.Infof("")
-	logrus.Infof(">>> DOCKER API GET(%s", r)
+	logrus.Infof(">>> DOCKER API GET(%s)", r)
 	return d.GetInternal(r)
 }
 
@@ -694,48 +709,35 @@ func (d *cephRBDVolumeDriver) GetInternal(r *volume.GetRequest) (*volume.GetResp
 	logrus.Debugf("API GetInternal(%s)", r)
 
 	// parse full image name for optional/default pieces
-	pool, name, opts, err := d.parseImagePoolName(r.Name)
+	pool, name, _, readonly, err := d.parseImagePoolName(r.Name)
 	if err != nil {
-		err := fmt.Sprintf("error parsing volume name: %s", err)
-		logrus.Errorf("%s", err)
+		err := fmt.Sprintf("error parsing volume name %s: %s", r.Name, err)
+		logrus.Error(err)
 		return nil, errors.New(err)
 	}
 
-	var found *volume.Volume
-	allVolumes, err1 := d.ListInternal()
-	if err1 != nil {
-		logrus.Errorf("error getting volume list: %s", err1)
-		return nil, errors.New(fmt.Sprintf("Couldn't get volume info for %s/%s: %s", pool, name, err1))
-	}
-	for _, v := range allVolumes.Volumes {
-		vpool, vname, _, errv := d.parseImagePoolName(v.Name)
-		if errv != nil {
-			logrus.Warnf("Error parsing image name %s. err=%s", v.Name, errv)
-			continue
-		}
-		// var prname = fmt.Sprintf("%s/%s", pool, rname)
-		// logrus.Debugf(">>>>> %s == %s %s ?", v.Name, r.Name, (v.Name == r.Name))
-		// if v.Name == prname {
-		// if v.Name == r.Name {
-		// logrus.Debugf(">>>>> %s %s == %s %s ?", vpool, vname, pool, name)
-		if vpool == pool && vname == name {
-			found = v
-			break
-		}
-	}
-
-	if found != nil {
-		logrus.Infof("Volume found for image %s/%s: %s", pool, name, found)
-		volumeName := found.Name
-		if opts != "" {
-			volumeName = found.Name + "#" + opts
-		}
-		return &volume.GetResponse{Volume: &volume.Volume{Name: volumeName, Mountpoint: found.Mountpoint, CreatedAt: "2018-01-01T00:00:00-00:00"}}, nil
-	} else {
-		err := fmt.Sprintf("Volume not found for %s", r.Name)
-		logrus.Infof("%s", err)
+	info, err := d.rbdImageInfo(pool, name)
+	if err != nil {
+		err := fmt.Sprintf("couldn't get info for %s/%s: %s", pool, name, err.Error())
+		logrus.Error(err)
 		return nil, errors.New(err)
 	}
+	logrus.Infof("Image found for volume %s/%s", pool, name)
+
+	createdAt, err := info.CreatedAt()
+	if err != nil {
+		err := fmt.Sprintf("couldn't get info for %s/%s: %s", pool, name, err.Error())
+		logrus.Error(err)
+		return nil, errors.New(err)
+	}
+
+	// only provide mountPoint for volumes that are actually mounted
+	var mountPoint string
+	if d.mountLocksCount(pool, name) > 0 {
+		mountPoint = d.mountpoint(pool, name, readonly)
+	}
+
+	return &volume.GetResponse{Volume: &volume.Volume{Name: r.Name, Mountpoint: mountPoint, CreatedAt: createdAt}}, nil
 }
 
 // Path returns the path to host directory mountpoint for volume.
@@ -756,15 +758,14 @@ func (d *cephRBDVolumeDriver) GetInternal(r *volume.GetRequest) (*volume.GetResp
 //
 func (d *cephRBDVolumeDriver) Path(r *volume.PathRequest) (*volume.PathResponse, error) {
 	logrus.Infof("")
-	logrus.Infof(">>> DOCKER API PATH(%s", r)
+	logrus.Infof(">>> DOCKER API PATH(%s)", r)
 	return d.PathInternal(r)
 }
 
 func (d *cephRBDVolumeDriver) PathInternal(r *volume.PathRequest) (*volume.PathResponse, error) {
 	logrus.Debugf("API PathInternal(%s)", r)
 	// parse full image name for optional/default pieces
-	pool, name, opts, err := d.parseImagePoolName(r.Name)
-	readonly := (opts == "ro")
+	pool, name, _, readonly, err := d.parseImagePoolName(r.Name)
 	if err != nil {
 		err := fmt.Sprintf("error parsing volume name: %s", err)
 		logrus.Errorf("%s", err)
@@ -813,8 +814,7 @@ func (d *cephRBDVolumeDriver) UnmountInternal(r *volume.UnmountRequest) error {
 	logrus.Debugf("API UnmountInternal(%s)", r)
 
 	// parse full image name for optional/default pieces
-	pool, name, opts, err := d.parseImagePoolName(r.Name)
-	readonly := opts == "ro"
+	pool, name, _, readonly, err := d.parseImagePoolName(r.Name)
 	if err != nil {
 		err := fmt.Sprintf("error parsing volume name: %s", err)
 		logrus.Errorf("%s", err)
@@ -1025,7 +1025,7 @@ func (d *cephRBDVolumeDriver) mountpoint(pool, name string, readonly bool) strin
 // 	return d.parseImagePoolName(fullname, false)
 // }
 
-func (d *cephRBDVolumeDriver) parseImagePoolName(fullname string) (pool string, imagename string, opts string, err error) {
+func (d *cephRBDVolumeDriver) parseImagePoolName(fullname string) (pool string, imagename string, opts string, readonly bool, err error) {
 	//example matches:
 	// Full match	0-17	`pool1/myimage1#ro`
 	// Group 1.	0-6	`pool1/`
@@ -1048,14 +1048,11 @@ func (d *cephRBDVolumeDriver) parseImagePoolName(fullname string) (pool string, 
 	// Group 3.	0-8	`myimage1`
 
 	pool = d.defaultCephPool // defaul pool for plugin
-	opts = ""
-
-	imageNameRegexp := regexp.MustCompile(`^(([-_.[:alnum:]]+)/)?([-_.[:alnum:]]+)(#(ro))?$`)
 
 	matches := imageNameRegexp.FindStringSubmatch(fullname)
 	nmatches := len(matches)
 	if nmatches < 2 {
-		return "", "", "", errors.New("Unable to parse image name: " + fullname)
+		return "", "", "", false, errors.New("Unable to parse image name: " + fullname)
 	} else if nmatches == 2 {
 		imagename = matches[1]
 	} else if nmatches == 4 {
@@ -1071,8 +1068,8 @@ func (d *cephRBDVolumeDriver) parseImagePoolName(fullname string) (pool string, 
 		imagename = matches[3]
 		opts = matches[5]
 	}
-
-	return pool, imagename, opts, nil
+	readonly = opts == "ro"
+	return pool, imagename, opts, readonly, nil
 }
 
 // rbdImageExists will check for an existing RBD Image
@@ -1086,6 +1083,19 @@ func (d *cephRBDVolumeDriver) rbdImageExists(pool, findName string) (bool, error
 		return false, nil
 	}
 	return true, nil
+}
+
+// rbdImageInfo retrieve image information like size, creation date, format and etc...
+func (d *cephRBDVolumeDriver) rbdImageInfo(pool, findName string) (*imageInfo, error) {
+	resp, err := d.rbdsh(pool, "info", findName, "--format", "json")
+	if err != nil {
+		return nil, err
+	}
+	var imageInfo imageInfo
+	if err := json.Unmarshal([]byte(resp), &imageInfo); err != nil {
+		return nil, err
+	}
+	return &imageInfo, nil
 }
 
 // createRBDImage will create a new Ceph block device and make a filesystem on it
@@ -1597,4 +1607,13 @@ func (d *cephRBDVolumeDriver) currentVolumes() (map[string]*Volume, error) {
 	}
 
 	return volumes, nil
+}
+
+// CreatedAt format image CreateTimestamp to plugin time layout
+func (i *imageInfo) CreatedAt() (string, error) {
+	parse, err := time.Parse("Mon Jan 2 15:04:05 2006", i.CreateTimestamp)
+	if err != nil {
+		return "", errors.New(fmt.Sprintf("error parsing creation timestamp %s from image %s using pattern '%s'", i.CreateTimestamp, i.Name, "Mon Jan 2 15:04:05 2006"))
+	}
+	return parse.Format("2006-01-02T15:04:05Z07:00"), nil
 }
