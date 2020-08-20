@@ -1,6 +1,7 @@
 # cepher
 
-[<img src="https://img.shields.io/docker/automated/flaviostutz/cepher"/>](https://hub.docker.com/r/flaviostutz/cepher)
+[<img src="https://img.shields.io/docker/automated/flaviostutz/cepher"/>](https://hub.docker.com/r/flaviostutz/cepher)<br/>
+[<img src="https://goreportcard.com/badge/github.com/flaviostutz/cepher"/>](https://goreportcard.com/report/github.com/flaviostutz/cepher)
 
 Docker Volume Plugin that enables the management of volumes on Ceph RBD backends.
 This is a hard fork of https://github.com/yp-engineering/rbd-docker-plugin
